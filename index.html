@@ -273,13 +273,41 @@
         #sidebar {
             width: 100%;
             min-width: 0;
-            height: 45vh;
+            height: 60vh;
             border-right: 0;
             border-bottom: 1px solid var(--border);
         }
 
+        .app-header {
+            padding: 8px 12px 6px;
+        }
+
+        .app-title {
+            font-size: 15px;
+            margin: 0;
+        }
+
+        .app-subtitle {
+            display: none;
+        }
+
+        .tools-toggle {
+            padding: 7px 12px;
+            font-size: 12px;
+        }
+
+        #treeSearch {
+            margin: 6px 10px;
+            padding: 6px 10px;
+        }
+
+        .tree-row {
+            min-height: 26px;
+            padding: 4px 7px;
+        }
+
         #main {
-            height: 55vh;
+            height: 40vh;
         }
 
         #editorArea {
@@ -287,11 +315,19 @@
         }
 
         #editorHeader {
-            padding: 10px 14px;
+            padding: 8px 14px;
+        }
+
+        #editorTitle {
+            font-size: 15px;
+        }
+
+        #breadcrumb {
+            font-size: 10px;
         }
 
         #editor {
-            min-height: 300px;
+            min-height: 220px;
         }
     }
 
@@ -302,6 +338,47 @@
         font-size: 12px;
         border-bottom: 1px solid #e6bcbc;
         display: none;
+    }
+
+    .tools-toggle {
+        width: 100%;
+        text-align: left;
+        padding: 12px 14px;
+        font-size: 13px;
+        font-weight: 600;
+        background: #fafbfc;
+        border: none;
+        border-bottom: 1px solid var(--border);
+        cursor: pointer;
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .tools-toggle:hover {
+        background: #f2f3f5;
+    }
+
+    #toolsToggleIcon {
+        display: inline-block;
+        transition: transform 0.15s ease;
+        font-size: 11px;
+        color: var(--muted);
+    }
+
+    .tools-toggle[aria-expanded="true"] #toolsToggleIcon {
+        transform: rotate(90deg);
+    }
+
+    .tools-panel {
+        overflow: hidden;
+        max-height: 600px;
+        transition: max-height 0.2s ease;
+    }
+
+    .tools-panel.collapsed {
+        max-height: 0;
     }
 
     .drive-status {
@@ -405,30 +482,43 @@
 
     <div id="dbError" class="db-error"></div>
 
-    <div class="toolbar">
-        <button onclick="expandAll()">Expand all</button>
-        <button onclick="collapseAll()">Collapse all</button>
-        <button onclick="exportData()">Export</button>
-        <button onclick="document.getElementById('importFile').click()">Import</button>
-        <input
-            id="importFile"
-            type="file"
-            accept=".json"
-            hidden
-            onchange="importData(event)"
-        >
-    </div>
+    <button
+        id="toolsToggle"
+        class="tools-toggle"
+        onclick="toggleTools()"
+        aria-expanded="false"
+    >
+        <span id="toolsToggleIcon">▸</span> Tools &amp; Drive sync
+    </button>
 
-    <div class="toolbar" id="driveToolbar">
-        <button id="driveSignInBtn" onclick="DriveSync.signIn()">Sign in to Drive</button>
-        <button id="driveUploadBtn" onclick="DriveSync.uploadToDrive()" disabled>Upload to Drive</button>
-        <button id="driveDownloadBtn" onclick="DriveSync.downloadFromDrive()" disabled>Download from Drive</button>
-        <button id="driveSyncBtn" onclick="DriveSync.sync()" disabled>Sync</button>
-        <button id="driveForgetBtn" onclick="DriveSync.forgetPassphraseOnThisDevice()" title="Clear the saved passphrase from this device only">Forget passphrase</button>
-    </div>
+    <div id="toolsPanel" class="tools-panel collapsed">
 
-    <div id="driveStatus" class="drive-status">Drive: not configured</div>
-    <div class="drive-status" style="border-top:0; padding-top:0;">Backups are encrypted on this device before upload. Losing your passphrase means the Drive backup can't be recovered.</div>
+        <div class="toolbar">
+            <button onclick="expandAll()">Expand all</button>
+            <button onclick="collapseAll()">Collapse all</button>
+            <button onclick="exportData()">Export</button>
+            <button onclick="document.getElementById('importFile').click()">Import</button>
+            <input
+                id="importFile"
+                type="file"
+                accept=".json"
+                hidden
+                onchange="importData(event)"
+            >
+        </div>
+
+        <div class="toolbar" id="driveToolbar">
+            <button id="driveSignInBtn" onclick="DriveSync.signIn()">Sign in to Drive</button>
+            <button id="driveUploadBtn" onclick="DriveSync.uploadToDrive()" disabled>Upload to Drive</button>
+            <button id="driveDownloadBtn" onclick="DriveSync.downloadFromDrive()" disabled>Download from Drive</button>
+            <button id="driveSyncBtn" onclick="DriveSync.sync()" disabled>Sync</button>
+            <button id="driveForgetBtn" onclick="DriveSync.forgetPassphraseOnThisDevice()" title="Clear the saved passphrase from this device only">Forget passphrase</button>
+        </div>
+
+        <div id="driveStatus" class="drive-status">Drive: not configured</div>
+        <div class="drive-status" style="border-top:0; padding-top:0;">Backups are encrypted on this device before upload. Losing your passphrase means the Drive backup can't be recovered.</div>
+
+    </div>
 
     <input
         id="treeSearch"
@@ -735,60 +825,105 @@ const LIFE_TREE = [
             {
                 id: "30s",
                 title: "11. My 30s",
+                prompt: "Cover each stretch of years below, or write about the decade as a whole. Consider career, relationships, family, home, money, health, and what mattered most during this decade.",
                 children: [
                     "30–32",
                     "33–35",
-                    "36–39"
+                    "36–39",
+                    "Career during my 30s",
+                    "Relationships and family during my 30s",
+                    "Health during my 30s",
+                    "Money and home during my 30s",
+                    "Defining moments of my 30s",
+                    "What I worried about in my 30s",
+                    "What I was proud of in my 30s"
                 ]
             },
 
             {
                 id: "40s",
                 title: "12. My 40s",
+                prompt: "Cover each stretch of years below, or write about the decade as a whole. Consider career, relationships, family, home, money, health, and what mattered most during this decade.",
                 children: [
                     "40–42",
                     "43–45",
-                    "46–49"
+                    "46–49",
+                    "Career during my 40s",
+                    "Relationships and family during my 40s",
+                    "Health during my 40s",
+                    "Money and home during my 40s",
+                    "Defining moments of my 40s",
+                    "What I worried about in my 40s",
+                    "What I was proud of in my 40s"
                 ]
             },
 
             {
                 id: "50s",
                 title: "My 50s",
+                prompt: "Cover each stretch of years below, or write about the decade as a whole. Consider career, relationships, family, home, money, health, and what mattered most during this decade.",
                 children: [
                     "50–52",
                     "53–55",
-                    "56–59"
+                    "56–59",
+                    "Career during my 50s",
+                    "Relationships and family during my 50s",
+                    "Health during my 50s",
+                    "Money and home during my 50s",
+                    "Defining moments of my 50s",
+                    "What I worried about in my 50s",
+                    "What I was proud of in my 50s"
                 ]
             },
 
             {
                 id: "60s",
                 title: "My 60s",
+                prompt: "Cover each stretch of years below, or write about the decade as a whole. Consider career, retirement, relationships, family, health, and what mattered most during this decade.",
                 children: [
                     "60–62",
                     "63–65",
-                    "66–69"
+                    "66–69",
+                    "Career or retirement during my 60s",
+                    "Relationships and family during my 60s",
+                    "Health during my 60s",
+                    "Money and home during my 60s",
+                    "Defining moments of my 60s",
+                    "What I worried about in my 60s",
+                    "What I was proud of in my 60s"
                 ]
             },
 
             {
                 id: "70s",
                 title: "My 70s",
+                prompt: "Cover each stretch of years below, or write about the decade as a whole. Consider relationships, family, health, and what mattered most during this decade.",
                 children: [
                     "70–72",
                     "73–75",
-                    "76–79"
+                    "76–79",
+                    "Daily life during my 70s",
+                    "Relationships and family during my 70s",
+                    "Health during my 70s",
+                    "Defining moments of my 70s",
+                    "What I worried about in my 70s",
+                    "What I was proud of in my 70s"
                 ]
             },
 
             {
                 id: "80-plus",
                 title: "My 80s and Beyond",
+                prompt: "Cover each stretch of years below, or write about this period as a whole. Consider daily life, relationships, family, health, and what mattered most.",
                 children: [
                     "80–84",
                     "85–89",
-                    "90 and beyond"
+                    "90 and beyond",
+                    "Daily life in my 80s and beyond",
+                    "Relationships and family in my 80s and beyond",
+                    "Health in my 80s and beyond",
+                    "Defining moments of this period",
+                    "What I was proud of in this period"
                 ]
             }
         ]
@@ -932,6 +1067,27 @@ const LIFE_TREE = [
                     "How it affected later decisions",
                     "How I understand it today"
                 ]
+            },
+
+            {
+                id: "health",
+                title: "20a. My Health",
+                prompt: "Health shapes decades, not just moments. Record what you remember across your whole life — conditions, injuries, mental health, habits, and how your relationship with your body and mind changed over time.",
+                children: [
+                    "Childhood health and illnesses",
+                    "Major injuries or accidents",
+                    "Chronic conditions and diagnoses",
+                    "Surgeries and hospital stays",
+                    "Mental health — struggles",
+                    "Mental health — what helped",
+                    "Doctors and caregivers who mattered",
+                    "How my body changed as I aged",
+                    "Habits around food, exercise and sleep",
+                    "Addiction, recovery, or self-control struggles",
+                    "Health scares — mine or a loved one's",
+                    "How illness or health changed my priorities",
+                    "What I wish I had known sooner about my health"
+                ]
             }
         ]
     },
@@ -1028,12 +1184,48 @@ const LIFE_TREE = [
             {
                 id: "events-changed-direction",
                 title: "24. The Events That Changed My Direction",
+                prompt: "Most lives pivot on a handful of moments — a decision, a chance meeting, a door that opened or closed. Write about each turning point you can identify. Use the framework below for each one, or write freely.",
                 children: [
-                    "Before — What was my life like?",
-                    "Event — What happened?",
-                    "Decision — What did I choose?",
-                    "After — What changed?",
-                    "Looking back — What do I think now?"
+                    "Turning point 1 — what was my life like before?",
+                    "Turning point 1 — what happened, and what did I choose?",
+                    "Turning point 1 — what changed afterward, looking back now",
+                    "Turning point 2 — what was my life like before?",
+                    "Turning point 2 — what happened, and what did I choose?",
+                    "Turning point 2 — what changed afterward, looking back now",
+                    "Turning point 3 — what was my life like before?",
+                    "Turning point 3 — what happened, and what did I choose?",
+                    "Turning point 3 — what changed afterward, looking back now",
+                    "A decision I almost made differently",
+                    "A door that closed, and what opened instead",
+                    "A chance encounter that changed everything",
+                    "The moment I knew something had to change",
+                    "Other turning points"
+                ]
+            }
+        ]
+    },
+
+    {
+        id: "regrets",
+        title: "Part X-A — Regrets and Roads Not Taken",
+        children: [
+
+            {
+                id: "roads-not-taken",
+                title: "24a. Regrets and Roads Not Taken",
+                prompt: "Honest reflection includes what didn't happen. This section is for the paths not taken, the words not said, and the things you'd do differently — without judgment, just an honest record.",
+                children: [
+                    "A path I chose not to take, and why",
+                    "A relationship I wish I had handled differently",
+                    "Something I wish I had said, to someone specific",
+                    "Something I wish I had never said",
+                    "An opportunity I let pass",
+                    "A risk I wish I had taken",
+                    "A risk I wish I had not taken",
+                    "Someone I wish I had stayed in touch with",
+                    "A version of my life I sometimes wonder about",
+                    "What I would tell myself at the moment of that regret",
+                    "How I have made peace with it, if I have"
                 ]
             }
         ]
@@ -1201,6 +1393,26 @@ const LIFE_TREE = [
                     "What I hope stays the same",
                     "Questions for my future self",
                     "Message to the person I will become"
+                ]
+            },
+
+            {
+                id: "letter-to-descendants",
+                title: "35. What I Want You to Know",
+                prompt: "This is different from the rest of the book — write it as if speaking directly to whoever reads this after you: a child, grandchild, or anyone who wants to know you. Address them as \"you.\" Say what you actually want them to hear.",
+                children: [
+                    "Who I am, in my own words",
+                    "What I want you to know about our family",
+                    "What I hope you never have to learn the hard way",
+                    "What I got right that I hope you carry forward",
+                    "What I got wrong that I hope you avoid",
+                    "Advice I would give you, whoever you are",
+                    "What I want you to know about love",
+                    "What I want you to know about hardship",
+                    "What I want you to know about who I really was, beneath the surface",
+                    "How I hope you remember me",
+                    "What I wish someone had told me at your age",
+                    "A final message, in case this is the last thing I ever tell you"
                 ]
             }
         ]
@@ -1765,6 +1977,52 @@ function collapseAll() {
     expanded.clear();
 
     renderTree();
+}
+
+
+/*
+   Toggles the Tools & Drive sync panel, which is collapsed by
+   default so the section list is visible without scrolling past
+   six buttons and two status lines first — especially on a phone
+   screen. The open/closed state is remembered per device via
+   localStorage so it doesn't reset to collapsed on every reload
+   once the person has opened it.
+*/
+function toggleTools() {
+
+    const panel = document.getElementById("toolsPanel");
+    const toggle = document.getElementById("toolsToggle");
+
+    const nowExpanded = panel.classList.contains("collapsed");
+
+    panel.classList.toggle("collapsed", !nowExpanded);
+    toggle.setAttribute("aria-expanded", String(nowExpanded));
+
+    try {
+        localStorage.setItem("lifeHistoryToolsExpanded", String(nowExpanded));
+    } catch (e) {
+        // Non-fatal: the panel just won't remember its state
+        // across reloads if localStorage is unavailable.
+    }
+}
+
+
+/*
+   Restores the Tools panel's open/closed state on load, so a
+   person who prefers it open doesn't have to reopen it every time.
+*/
+function restoreToolsPanelState() {
+
+    let wasExpanded = false;
+
+    try {
+        wasExpanded = localStorage.getItem("lifeHistoryToolsExpanded") === "true";
+    } catch (e) {}
+
+    if (wasExpanded) {
+        document.getElementById("toolsPanel").classList.remove("collapsed");
+        document.getElementById("toolsToggle").setAttribute("aria-expanded", "true");
+    }
 }
 
 
@@ -2824,6 +3082,8 @@ async function init() {
         if (TREE[0]) {
             selectNode(TREE[0]);
         }
+
+        restoreToolsPanelState();
 
         await DriveSync.init();
 
