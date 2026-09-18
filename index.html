@@ -424,9 +424,11 @@
         <button id="driveUploadBtn" onclick="DriveSync.uploadToDrive()" disabled>Upload to Drive</button>
         <button id="driveDownloadBtn" onclick="DriveSync.downloadFromDrive()" disabled>Download from Drive</button>
         <button id="driveSyncBtn" onclick="DriveSync.sync()" disabled>Sync</button>
+        <button id="driveForgetBtn" onclick="DriveSync.forgetPassphraseOnThisDevice()" title="Clear the saved passphrase from this device only">Forget passphrase</button>
     </div>
 
     <div id="driveStatus" class="drive-status">Drive: not configured</div>
+    <div class="drive-status" style="border-top:0; padding-top:0;">Backups are encrypted on this device before upload. Losing your passphrase means the Drive backup can't be recovered.</div>
 
     <input
         id="treeSearch"
@@ -1968,6 +1970,198 @@ document.addEventListener("keydown", event => {
 
 
 /* =========================================================
+   CLIENT-SIDE ENCRYPTION FOR THE DRIVE BACKUP
+   =========================================================
+
+   The Drive backup JSON is encrypted in the browser, with a
+   passphrase only you know, before it ever leaves this device.
+   Google (or anyone with access to your Drive) sees only random
+   bytes, never your actual writing.
+
+   - AES-256-GCM for the encryption itself (authenticated, so
+     tampering or corruption is detected on decrypt rather than
+     silently producing garbage text).
+   - PBKDF2 (100,000 iterations, SHA-256) to turn your passphrase
+     into a key, with a random salt stored alongside the
+     ciphertext so the same passphrase can always re-derive the
+     same key on any device.
+   - A fresh random IV per encryption, also stored alongside the
+     ciphertext (IVs are not secret, only the passphrase is).
+   - The passphrase itself is NEVER sent anywhere, never stored in
+     Drive, and never logged. It only ever lives in this browser's
+     memory and, once you confirm it, in localStorage on this
+     device so you aren't asked again every sign-in.
+
+   THERE IS NO RECOVERY IF YOU FORGET THIS PASSPHRASE. It is not
+   sent to Google or to Anthropic, so no one can reset it for you.
+   Losing it means the Drive backup is permanently unreadable —
+   your local, on-device copies are unaffected either way.
+   ========================================================= */
+
+const Crypto = (() => {
+
+    const PBKDF2_ITERATIONS = 100000;
+    const PASSPHRASE_STORAGE_KEY = "lifeHistoryDrivePassphrase";
+
+    function getSavedPassphrase() {
+        try {
+            return localStorage.getItem(PASSPHRASE_STORAGE_KEY);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function savePassphrase(passphrase) {
+        try {
+            localStorage.setItem(PASSPHRASE_STORAGE_KEY, passphrase);
+        } catch (e) {
+            // If localStorage is unavailable, the user will just be
+            // asked again next time; encryption itself still works.
+        }
+    }
+
+    function forgetSavedPassphrase() {
+        try {
+            localStorage.removeItem(PASSPHRASE_STORAGE_KEY);
+        } catch (e) {}
+    }
+
+    async function deriveKey(passphrase, salt) {
+
+        const enc = new TextEncoder();
+
+        const baseKey = await crypto.subtle.importKey(
+            "raw",
+            enc.encode(passphrase),
+            "PBKDF2",
+            false,
+            ["deriveKey"]
+        );
+
+        return crypto.subtle.deriveKey(
+            {
+                name: "PBKDF2",
+                salt,
+                iterations: PBKDF2_ITERATIONS,
+                hash: "SHA-256"
+            },
+            baseKey,
+            { name: "AES-GCM", length: 256 },
+            false,
+            ["encrypt", "decrypt"]
+        );
+    }
+
+    function toBase64(bytes) {
+        return btoa(String.fromCharCode.apply(null, new Uint8Array(bytes)));
+    }
+
+    function fromBase64(str) {
+        return Uint8Array.from(atob(str), c => c.charCodeAt(0));
+    }
+
+    /*
+       Encrypts a plain JS object into a small envelope containing
+       the salt, IV and ciphertext, all base64-encoded so it can
+       be dropped straight into the JSON file uploaded to Drive.
+    */
+    async function encryptObject(obj, passphrase) {
+
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const key = await deriveKey(passphrase, salt);
+
+        const enc = new TextEncoder();
+        const plaintext = enc.encode(JSON.stringify(obj));
+
+        const ciphertext = await crypto.subtle.encrypt(
+            { name: "AES-GCM", iv },
+            key,
+            plaintext
+        );
+
+        return {
+            encrypted: true,
+            algorithm: "AES-GCM-256/PBKDF2-100000",
+            salt: toBase64(salt),
+            iv: toBase64(iv),
+            ciphertext: toBase64(ciphertext)
+        };
+    }
+
+    /*
+       Decrypts an envelope produced by encryptObject back into
+       the original JS object. Throws if the passphrase is wrong
+       or the data was tampered with/corrupted — AES-GCM detects
+       both cases rather than returning silently-wrong data.
+    */
+    async function decryptObject(envelope, passphrase) {
+
+        const salt = fromBase64(envelope.salt);
+        const iv = fromBase64(envelope.iv);
+        const ciphertext = fromBase64(envelope.ciphertext);
+        const key = await deriveKey(passphrase, salt);
+
+        let plaintextBytes;
+
+        try {
+            plaintextBytes = await crypto.subtle.decrypt(
+                { name: "AES-GCM", iv },
+                key,
+                ciphertext
+            );
+        } catch (e) {
+            throw new Error("Wrong passphrase, or the backup is corrupted.");
+        }
+
+        const dec = new TextDecoder();
+        return JSON.parse(dec.decode(plaintextBytes));
+    }
+
+    /*
+       Ensures we have a passphrase in memory for this session,
+       prompting once per device (per the "remember locally" choice)
+       and caching it in localStorage after that so sign-in doesn't
+       ask again on this device.
+    */
+    async function ensurePassphrase() {
+
+        const saved = getSavedPassphrase();
+        if (saved) return saved;
+
+        const entered = prompt(
+            "Set a passphrase to encrypt your Drive backup.\n\n" +
+            "This passphrase is never sent anywhere and cannot be " +
+            "recovered if you forget it. Use the SAME passphrase on " +
+            "every device you sync from.\n\n" +
+            "Choose a passphrase:"
+        );
+
+        if (!entered || !entered.trim()) {
+            throw new Error("A passphrase is required to use Drive sync.");
+        }
+
+        const confirmEntry = prompt("Enter the same passphrase again to confirm:");
+
+        if (confirmEntry !== entered) {
+            throw new Error("Passphrases did not match. Try Sign in again.");
+        }
+
+        savePassphrase(entered);
+        return entered;
+    }
+
+    return {
+        encryptObject,
+        decryptObject,
+        ensurePassphrase,
+        forgetSavedPassphrase,
+        getSavedPassphrase
+    };
+
+})();
+
+/* =========================================================
    GOOGLE DRIVE SYNC
    =========================================================
 
@@ -2169,10 +2363,27 @@ const DriveSync = (() => {
             throw new Error("Drive download failed: " + res.status);
         }
 
-        return res.json();
+        const payload = await res.json();
+
+        /*
+           Older, unencrypted backups (from before encryption was
+           added) are read as-is so nothing is lost on upgrade.
+           New backups are always encrypted envelopes and get
+           decrypted here, right after fetch, so every caller
+           upstream keeps working with a plain backup object.
+        */
+        if (!payload.encrypted) {
+            return payload;
+        }
+
+        const passphrase = await Crypto.ensurePassphrase();
+        return Crypto.decryptObject(payload, passphrase);
     }
 
     async function uploadBackup(fileId, backup) {
+
+        const passphrase = await Crypto.ensurePassphrase();
+        const envelope = await Crypto.encryptObject(backup, passphrase);
 
         const metadata = {
             name: DRIVE_FILE_NAME,
@@ -2186,7 +2397,7 @@ const DriveSync = (() => {
             JSON.stringify(metadata) + "\r\n" +
             `--${boundary}\r\n` +
             "Content-Type: application/json\r\n\r\n" +
-            JSON.stringify(backup, null, 2) + "\r\n" +
+            JSON.stringify(envelope, null, 2) + "\r\n" +
             `--${boundary}--`;
 
         const url = fileId
@@ -2482,12 +2693,33 @@ const DriveSync = (() => {
         }
     }
 
+    /*
+       Clears the passphrase saved in localStorage on THIS device
+       only. Does not touch the Drive backup or any other device.
+       Useful if you typed it wrong once and it got saved, or if
+       you're switching to a different passphrase going forward.
+    */
+    function forgetPassphraseOnThisDevice() {
+
+        const confirmed = confirm(
+            "Forget the saved passphrase on this device?\n\n" +
+            "You'll be asked to enter it again next time you sign " +
+            "in or sync. This does not delete anything from Drive."
+        );
+
+        if (!confirmed) return;
+
+        Crypto.forgetSavedPassphrase();
+        setStatus("passphrase forgotten on this device");
+    }
+
     return {
         init,
         signIn,
         uploadToDrive,
         downloadFromDrive,
         sync,
+        forgetPassphraseOnThisDevice,
         _resolveConflict
     };
 
