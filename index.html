@@ -2123,17 +2123,50 @@ const Crypto = (() => {
        prompting once per device (per the "remember locally" choice)
        and caching it in localStorage after that so sign-in doesn't
        ask again on this device.
+
+       mode "join": a Drive backup already exists and is encrypted.
+       This device needs the SAME passphrase already used elsewhere
+       to decrypt it — wrong entries fail only when decryption is
+       actually attempted, so we ask once (no confirm-retype, since
+       there's nothing to "confirm" — it either matches or it
+       doesn't) and word the prompt as "enter", not "set".
+
+       mode "create": no encrypted backup exists yet on Drive, so
+       this device is establishing the passphrase for the first
+       time. Asked twice to catch typos, since a typo here would
+       otherwise only surface later, on a different device.
     */
-    async function ensurePassphrase() {
+    async function ensurePassphrase(mode) {
 
         const saved = getSavedPassphrase();
         if (saved) return saved;
 
+        if (mode === "join") {
+
+            const entered = prompt(
+                "This Drive backup is encrypted.\n\n" +
+                "Enter the SAME passphrase you used to set this up " +
+                "on your other device. This is not a new passphrase " +
+                "— it must match exactly, or the backup can't be " +
+                "decrypted.\n\n" +
+                "Passphrase:"
+            );
+
+            if (!entered || !entered.trim()) {
+                throw new Error("A passphrase is required to use Drive sync.");
+            }
+
+            savePassphrase(entered);
+            return entered;
+        }
+
         const entered = prompt(
             "Set a passphrase to encrypt your Drive backup.\n\n" +
-            "This passphrase is never sent anywhere and cannot be " +
-            "recovered if you forget it. Use the SAME passphrase on " +
-            "every device you sync from.\n\n" +
+            "This is the FIRST time this backup is being encrypted. " +
+            "You will need to enter this exact same passphrase on " +
+            "every other device you sync from — write it down " +
+            "somewhere safe. It is never sent anywhere and cannot be " +
+            "recovered if you forget it.\n\n" +
             "Choose a passphrase:"
         );
 
@@ -2376,13 +2409,20 @@ const DriveSync = (() => {
             return payload;
         }
 
-        const passphrase = await Crypto.ensurePassphrase();
+        const passphrase = await Crypto.ensurePassphrase("join");
         return Crypto.decryptObject(payload, passphrase);
     }
 
     async function uploadBackup(fileId, backup) {
 
-        const passphrase = await Crypto.ensurePassphrase();
+        /*
+           fileId present means a Drive file already exists, so any
+           device uploading to it (after having downloaded/decrypted
+           it, or knowing one is there) should be joining an existing
+           passphrase, not creating a new one. No fileId means this
+           is the very first upload ever for this account.
+        */
+        const passphrase = await Crypto.ensurePassphrase(fileId ? "join" : "create");
         const envelope = await Crypto.encryptObject(backup, passphrase);
 
         const metadata = {
@@ -2456,6 +2496,27 @@ const DriveSync = (() => {
        entries whose ids match. Used when the user deliberately
        chooses "Download" rather than a two-way sync.
     */
+    /*
+       Shared handling for a failed Drive operation: a wrong
+       passphrase gets cleared from this device so the next attempt
+       re-prompts instead of repeating the same silent failure;
+       anything else just reports the error as-is.
+    */
+    function reportDriveError(prefix, error) {
+
+        console.error(error);
+
+        if (error.message && error.message.includes("Wrong passphrase")) {
+            Crypto.forgetSavedPassphrase();
+            setStatus(
+                "wrong passphrase for this backup — try again, the saved value was cleared",
+                "err"
+            );
+        } else {
+            setStatus(prefix + " — " + error.message, "err");
+        }
+    }
+
     async function downloadFromDrive() {
 
         if (!accessToken) return;
@@ -2505,8 +2566,7 @@ const DriveSync = (() => {
 
         } catch (error) {
 
-            console.error(error);
-            setStatus("download failed — " + error.message, "err");
+            reportDriveError("download failed", error);
         }
     }
 
@@ -2575,8 +2635,7 @@ const DriveSync = (() => {
 
         } catch (error) {
 
-            console.error(error);
-            setStatus("sync failed — " + error.message, "err");
+            reportDriveError("sync failed", error);
         }
     }
 
