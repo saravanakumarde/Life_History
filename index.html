@@ -250,6 +250,47 @@
         font-size: 11px;
     }
 
+    #dateSuggestBar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 22px;
+        background: #fff9e8;
+        border-bottom: 1px solid #f0e0a8;
+        font-size: 12px;
+    }
+
+    .date-suggest-label {
+        color: #7a5f10;
+        font-weight: 600;
+    }
+
+    .date-suggest-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: white;
+        border: 1px solid #e0c98a;
+        border-radius: 20px;
+        padding: 3px 6px 3px 12px;
+        font-size: 12px;
+    }
+
+    .date-suggest-chip button {
+        border-radius: 14px;
+        padding: 3px 9px;
+        font-size: 11px;
+    }
+
+    .date-suggest-chip .dismiss-btn {
+        background: transparent;
+        border: none;
+        color: var(--muted);
+        padding: 3px 6px;
+        cursor: pointer;
+    }
+
     #editorTitle {
         margin: 0;
         font-size: 21px;
@@ -777,6 +818,8 @@
         <span id="dateHint" class="date-hint"></span>
         <button id="clearDateBtn" onclick="clearEntryDate()" style="display:none;">Clear date</button>
     </div>
+
+    <div id="dateSuggestBar" style="display:none;"></div>
 
     <section id="editorArea">
 
@@ -2148,6 +2191,12 @@ async function selectNode(node) {
     editor.value = "";
     dateInput.value = "";
 
+    // Switching sections: hide any leftover suggestion bar from the
+    // previous section immediately, rather than showing stale chips
+    // for a moment while the new text loads.
+    document.getElementById("dateSuggestBar").style.display = "none";
+    document.getElementById("dateSuggestBar").innerHTML = "";
+
     setSaveStatus("Loading…");
     setDateHint("");
 
@@ -2168,6 +2217,11 @@ async function selectNode(node) {
             setSaveStatus(
                 text ? "Saved" : "Not yet written"
             );
+
+            // Scan the section's existing text for dates right away,
+            // so previously written entries (not just newly typed
+            // ones) still get their dates offered.
+            scanEditorForDates();
         }
 
     } catch (error) {
@@ -2571,7 +2625,232 @@ document.getElementById("editor")
             autosave,
             500
         );
+
+        clearTimeout(dateScanTimer);
+
+        dateScanTimer = setTimeout(
+            scanEditorForDates,
+            600
+        );
     });
+
+
+/* =========================================================
+   IN-TEXT DATE DETECTION
+   =========================================================
+
+   Scans the current section's text for dates written directly in
+   the sentence — e.g. "15-08-1975", "15/08/1975", "15th August
+   1975" — and offers to add each one found as this section's
+   Date, via a confirm/dismiss chip. Nothing is added automatically;
+   a wrongly-guessed date silently attached to a section would be
+   worse than missing one, so every match requires a tap to accept.
+
+   This only recognizes dates actually written in a parseable
+   numeric or month-name format — it cannot infer a date from a
+   vague narrative reference ("around when I started school"),
+   since no date exists there to extract.
+   ========================================================= */
+
+let dateScanTimer = null;
+
+// Per-section, per-date-string dismissals so a rejected suggestion
+// doesn't keep reappearing on every keystroke in the same section.
+// Cleared when a different section is opened.
+let dismissedDateSuggestions = new Set();
+
+const MONTH_NAMES = {
+    jan: 1, january: 1,
+    feb: 2, february: 2,
+    mar: 3, march: 3,
+    apr: 4, april: 4,
+    may: 5,
+    jun: 6, june: 6,
+    jul: 7, july: 7,
+    aug: 8, august: 8,
+    sep: 9, sept: 9, september: 9,
+    oct: 10, october: 10,
+    nov: 11, november: 11,
+    dec: 12, december: 12
+};
+
+/*
+   Finds date-like substrings in free text. Supports:
+     - DD-MM-YYYY or DD/MM/YYYY (also D-M-YYYY, 2-digit year)
+     - "15th August 1975", "15 August 1975", "August 15, 1975"
+   Returns an array of { raw, isoDate } with duplicates removed,
+   skipping anything that doesn't resolve to a real calendar date
+   (e.g. "35-13-2020" is correctly ignored, not mis-parsed).
+*/
+function findDatesInText(text) {
+
+    const found = [];
+    const seen = new Set();
+
+    function addIfValid(raw, day, month, year) {
+
+        if (year < 100) year += year < 50 ? 2000 : 1900;
+
+        if (
+            month < 1 || month > 12 ||
+            day < 1 || day > 31 ||
+            year < 1000 || year > 9999
+        ) {
+            return;
+        }
+
+        // Reject impossible calendar dates (e.g. 31 Feb) by
+        // round-tripping through Date and checking it matches.
+        const check = new Date(year, month - 1, day);
+        if (
+            check.getFullYear() !== year ||
+            check.getMonth() !== month - 1 ||
+            check.getDate() !== day
+        ) {
+            return;
+        }
+
+        const iso =
+            String(year).padStart(4, "0") + "-" +
+            String(month).padStart(2, "0") + "-" +
+            String(day).padStart(2, "0");
+
+        if (seen.has(iso)) return;
+        seen.add(iso);
+
+        found.push({ raw: raw.trim(), isoDate: iso });
+    }
+
+    // DD-MM-YYYY or DD/MM/YYYY (also 2-digit year variants)
+    const numericPattern = /\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/g;
+    let m;
+    while ((m = numericPattern.exec(text)) !== null) {
+        addIfValid(m[0], parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10));
+    }
+
+    // "15th August 1975" / "15 August 1975"
+    const dayMonthYear =
+        /\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\s*,?\s*(\d{4})\b/gi;
+    while ((m = dayMonthYear.exec(text)) !== null) {
+        const month = MONTH_NAMES[m[2].toLowerCase()];
+        addIfValid(m[0], parseInt(m[1], 10), month, parseInt(m[3], 10));
+    }
+
+    // "August 15, 1975" / "August 15 1975"
+    const monthDayYear =
+        /\b(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\s+(\d{1,2})(?:st|nd|rd|th)?\s*,?\s*(\d{4})\b/gi;
+    while ((m = monthDayYear.exec(text)) !== null) {
+        const month = MONTH_NAMES[m[1].toLowerCase()];
+        addIfValid(m[0], parseInt(m[2], 10), month, parseInt(m[3], 10));
+    }
+
+    return found;
+}
+
+
+async function scanEditorForDates() {
+
+    if (!selectedId || selectedId === CALENDAR_NODE_ID) return;
+
+    const text = document.getElementById("editor").value;
+    const matches = findDatesInText(text);
+
+    const current = await loadEntryFull(selectedId);
+    const alreadySetDate = current?.eventDate
+        ? current.eventDate.split("/")[0]
+        : null;
+
+    const toSuggest = matches.filter(match =>
+        match.isoDate !== alreadySetDate &&
+        !dismissedDateSuggestions.has(selectedId + "|" + match.isoDate)
+    );
+
+    renderDateSuggestions(toSuggest);
+}
+
+
+function renderDateSuggestions(matches) {
+
+    const bar = document.getElementById("dateSuggestBar");
+
+    if (!matches.length) {
+        bar.style.display = "none";
+        bar.innerHTML = "";
+        return;
+    }
+
+    bar.style.display = "flex";
+    bar.innerHTML = "";
+
+    const label = document.createElement("span");
+    label.className = "date-suggest-label";
+    label.textContent =
+        matches.length === 1
+            ? "Found a date in your text:"
+            : "Found dates in your text:";
+    bar.appendChild(label);
+
+    matches.forEach(match => {
+
+        const chip = document.createElement("span");
+        chip.className = "date-suggest-chip";
+
+        const text = document.createElement("span");
+        text.textContent =
+            `"${match.raw}" → ${formatDisplayDate(match.isoDate)}`;
+        chip.appendChild(text);
+
+        const acceptBtn = document.createElement("button");
+        acceptBtn.className = "primary";
+        acceptBtn.textContent = "Use this date";
+        acceptBtn.onclick = () => acceptDateSuggestion(match.isoDate);
+        chip.appendChild(acceptBtn);
+
+        const dismissBtn = document.createElement("button");
+        dismissBtn.className = "dismiss-btn";
+        dismissBtn.textContent = "✕";
+        dismissBtn.title = "Not a date I want to record";
+        dismissBtn.onclick = () => dismissDateSuggestion(match.isoDate);
+        chip.appendChild(dismissBtn);
+
+        bar.appendChild(chip);
+    });
+}
+
+
+async function acceptDateSuggestion(isoDate) {
+
+    if (!selectedId) return;
+
+    document.getElementById("entryDate").value = isoDate;
+
+    try {
+
+        await saveEntryDate(selectedId, isoDate);
+        setDateHint("Date saved from your text");
+        updateClearDateButton();
+        refreshCalendarIfOpen();
+
+    } catch (error) {
+
+        console.error(error);
+        setDateHint("Could not save date");
+    }
+
+    // Re-scan so this date drops out of the suggestion bar (it now
+    // matches the section's set date) while any other detected
+    // dates in the same text remain offered.
+    scanEditorForDates();
+}
+
+
+function dismissDateSuggestion(isoDate) {
+
+    if (!selectedId) return;
+
+    dismissedDateSuggestions.add(selectedId + "|" + isoDate);
+    scanEditorForDates();
+}
 
 
 async function autosave() {
