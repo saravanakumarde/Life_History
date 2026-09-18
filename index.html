@@ -1,0 +1,2555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Life History</title>
+
+<style>
+    * {
+        box-sizing: border-box;
+    }
+
+    :root {
+        --sidebar: 340px;
+        --border: #d9dde3;
+        --bg: #f5f6f8;
+        --panel: #ffffff;
+        --text: #20242a;
+        --muted: #6d7480;
+        --accent: #3b6ff5;
+        --accent-light: #edf2ff;
+        --danger: #d64545;
+    }
+
+    html, body {
+        height: 100%;
+        margin: 0;
+        font-family:
+            Inter, ui-sans-serif, system-ui, -apple-system,
+            BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--text);
+        background: var(--bg);
+    }
+
+    body {
+        display: flex;
+        overflow: hidden;
+    }
+
+    /* LEFT TREE */
+
+    #sidebar {
+        width: var(--sidebar);
+        min-width: var(--sidebar);
+        height: 100vh;
+        background: #fff;
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .app-header {
+        padding: 20px 18px 14px;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .app-title {
+        font-size: 20px;
+        font-weight: 750;
+        margin: 0 0 4px;
+    }
+
+    .app-subtitle {
+        font-size: 12px;
+        color: var(--muted);
+    }
+
+    .toolbar {
+        padding: 10px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        gap: 7px;
+        flex-wrap: wrap;
+    }
+
+    button {
+        border: 1px solid var(--border);
+        background: white;
+        color: var(--text);
+        border-radius: 7px;
+        padding: 7px 10px;
+        cursor: pointer;
+        font-size: 12px;
+    }
+
+    button:hover {
+        background: #f4f6f8;
+    }
+
+    button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: white;
+    }
+
+    button.danger {
+        color: var(--danger);
+    }
+
+    #treeSearch {
+        margin: 10px;
+        width: calc(100% - 20px);
+        padding: 9px 11px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        outline: none;
+    }
+
+    #treeSearch:focus {
+        border-color: var(--accent);
+    }
+
+    #tree {
+        flex: 1;
+        overflow-y: auto;
+        padding: 8px 8px 40px;
+    }
+
+    .tree-node {
+        user-select: none;
+    }
+
+    .tree-row {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px 7px;
+        border-radius: 6px;
+        cursor: pointer;
+        min-height: 30px;
+    }
+
+    .tree-row:hover {
+        background: #f1f3f6;
+    }
+
+    .tree-row.selected {
+        background: var(--accent-light);
+        color: #2455c5;
+        font-weight: 600;
+    }
+
+    .toggle {
+        width: 18px;
+        min-width: 18px;
+        height: 18px;
+        border: 0;
+        background: transparent;
+        padding: 0;
+        font-size: 11px;
+    }
+
+    .node-icon {
+        width: 18px;
+        min-width: 18px;
+        text-align: center;
+    }
+
+    .node-title {
+        font-size: 13px;
+        line-height: 1.25;
+    }
+
+    .tree-children {
+        margin-left: 18px;
+    }
+
+    /* MAIN */
+
+    #main {
+        flex: 1;
+        min-width: 0;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+    }
+
+    #editorHeader {
+        min-height: 70px;
+        background: white;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 22px;
+        gap: 20px;
+    }
+
+    #breadcrumb {
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 3px;
+    }
+
+    #editorTitle {
+        margin: 0;
+        font-size: 21px;
+    }
+
+    #saveStatus {
+        white-space: nowrap;
+        color: var(--muted);
+        font-size: 12px;
+    }
+
+    #editorArea {
+        flex: 1;
+        min-height: 0;
+        padding: 25px;
+        overflow: auto;
+    }
+
+    #editorCard {
+        max-width: 1000px;
+        min-height: calc(100vh - 125px);
+        margin: 0 auto;
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    #prompt {
+        padding: 20px 25px 10px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.6;
+    }
+
+    #editor {
+        flex: 1;
+        width: 100%;
+        min-height: 450px;
+        resize: none;
+        border: 0;
+        outline: none;
+        padding: 10px 25px 25px;
+        font: 16px/1.75 Georgia, "Times New Roman", serif;
+        color: #24272c;
+        background: white;
+    }
+
+    #editorFooter {
+        border-top: 1px solid var(--border);
+        padding: 9px 15px;
+        display: flex;
+        justify-content: space-between;
+        color: var(--muted);
+        font-size: 11px;
+    }
+
+    .empty-state {
+        height: 100%;
+        min-height: 500px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--muted);
+        text-align: center;
+        padding: 40px;
+    }
+
+    /* MOBILE */
+
+    @media (max-width: 800px) {
+        body {
+            overflow: auto;
+            display: block;
+        }
+
+        #sidebar {
+            width: 100%;
+            min-width: 0;
+            height: 45vh;
+            border-right: 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        #main {
+            height: 55vh;
+        }
+
+        #editorArea {
+            padding: 10px;
+        }
+
+        #editorHeader {
+            padding: 10px 14px;
+        }
+
+        #editor {
+            min-height: 300px;
+        }
+    }
+
+    .db-error {
+        background: #fff1f1;
+        color: #a52b2b;
+        padding: 10px;
+        font-size: 12px;
+        border-bottom: 1px solid #e6bcbc;
+        display: none;
+    }
+
+    .drive-status {
+        padding: 8px 12px;
+        font-size: 11px;
+        color: var(--muted);
+        border-bottom: 1px solid var(--border);
+        background: #fafbfc;
+    }
+
+    .drive-status.ok {
+        color: #1a7f37;
+    }
+
+    .drive-status.err {
+        color: var(--danger);
+    }
+
+    #driveToolbar button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+
+    /* CONFLICT MODAL */
+
+    .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(20, 22, 26, 0.45);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 20px;
+    }
+
+    .modal-backdrop.open {
+        display: flex;
+    }
+
+    .modal-box {
+        background: white;
+        border-radius: 10px;
+        max-width: 560px;
+        width: 100%;
+        max-height: 85vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+    }
+
+    .modal-header {
+        padding: 18px 22px;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .modal-header h3 {
+        margin: 0 0 4px;
+        font-size: 16px;
+    }
+
+    .modal-header p {
+        margin: 0;
+        font-size: 12px;
+        color: var(--muted);
+    }
+
+    .modal-body {
+        padding: 18px 22px;
+        overflow-y: auto;
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    .modal-body ul {
+        padding-left: 18px;
+    }
+
+    .modal-footer {
+        padding: 14px 22px;
+        border-top: 1px solid var(--border);
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+</style>
+</head>
+
+<body>
+
+<!-- SIDEBAR -->
+<aside id="sidebar">
+
+    <div class="app-header">
+        <h1 class="app-title">My Life History</h1>
+        <div class="app-subtitle">
+            Your personal history — from birth onward
+        </div>
+    </div>
+
+    <div id="dbError" class="db-error"></div>
+
+    <div class="toolbar">
+        <button onclick="expandAll()">Expand all</button>
+        <button onclick="collapseAll()">Collapse all</button>
+        <button onclick="exportData()">Export</button>
+        <button onclick="document.getElementById('importFile').click()">Import</button>
+        <input
+            id="importFile"
+            type="file"
+            accept=".json"
+            hidden
+            onchange="importData(event)"
+        >
+    </div>
+
+    <div class="toolbar" id="driveToolbar">
+        <button id="driveSignInBtn" onclick="DriveSync.signIn()">Sign in to Drive</button>
+        <button id="driveUploadBtn" onclick="DriveSync.uploadToDrive()" disabled>Upload to Drive</button>
+        <button id="driveDownloadBtn" onclick="DriveSync.downloadFromDrive()" disabled>Download from Drive</button>
+        <button id="driveSyncBtn" onclick="DriveSync.sync()" disabled>Sync</button>
+    </div>
+
+    <div id="driveStatus" class="drive-status">Drive: not configured</div>
+
+    <input
+        id="treeSearch"
+        type="search"
+        placeholder="Search sections..."
+        oninput="filterTree(this.value)"
+    >
+
+    <div id="tree"></div>
+
+</aside>
+
+
+<!-- MAIN EDITOR -->
+<main id="main">
+
+    <header id="editorHeader">
+        <div>
+            <div id="breadcrumb">Select a section from the left</div>
+            <h2 id="editorTitle">My Life History</h2>
+        </div>
+
+        <div id="saveStatus">Ready</div>
+    </header>
+
+    <section id="editorArea">
+
+        <div id="editorCard">
+
+            <div id="prompt">
+                Select a section in the tree and begin writing.
+                Your writing is automatically saved to this browser.
+            </div>
+
+            <textarea
+                id="editor"
+                placeholder="Start writing here..."
+                spellcheck="true"
+                disabled
+            ></textarea>
+
+            <div id="editorFooter">
+                <span id="wordCount">0 words</span>
+                <span id="charCount">0 characters</span>
+            </div>
+
+        </div>
+
+    </section>
+
+</main>
+
+
+<!-- SYNC CONFLICT MODAL -->
+<div id="conflictModal" class="modal-backdrop">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>Drive and this device have both changed</h3>
+            <p>Choose which version to keep. This won't happen if you sync more often.</p>
+        </div>
+        <div class="modal-body" id="conflictBody"></div>
+        <div class="modal-footer">
+            <button onclick="DriveSync._resolveConflict('keepLocal')">Keep this device's copy</button>
+            <button onclick="DriveSync._resolveConflict('keepDrive')">Keep Drive's copy</button>
+            <button class="primary" onclick="DriveSync._resolveConflict('merge')">Keep both (merge)</button>
+        </div>
+    </div>
+</div>
+
+
+<script>
+
+/* =========================================================
+   LIFE HISTORY STRUCTURE
+   ========================================================= */
+
+const LIFE_TREE = [
+
+    {
+        id: "before-birth",
+        title: "Part I — Before I Could Remember",
+        children: [
+
+            {
+                id: "family-before-birth",
+                title: "1. My Family Before My Birth",
+                prompt: "Record what you know about your family before you were born.",
+                children: [
+                    "Parents: their backgrounds, childhoods, education and work",
+                    "How my parents met",
+                    "Their relationship before I was born",
+                    "Where they lived",
+                    "Financial and social circumstances",
+                    "Extended family",
+                    "Family traditions and beliefs",
+                    "Major events happening in the family"
+                ]
+            },
+
+            {
+                id: "birth",
+                title: "2. My Birth",
+                prompt: "Record everything known about your birth.",
+                children: [
+                    "Date, time and place",
+                    "Circumstances surrounding my birth",
+                    "Pregnancy and delivery",
+                    "My name and why it was chosen",
+                    "What my parents/family remember",
+                    "Photographs and documents",
+                    "Stories people told me"
+                ]
+            },
+
+            {
+                id: "infancy",
+                title: "3. Infancy: 0–2",
+                children: [
+                    "Where I lived",
+                    "Parents and caregivers",
+                    "Siblings",
+                    "First memories or stories about me",
+                    "Health and development",
+                    "First words and milestones",
+                    "Objects and toys",
+                    "Family routines",
+                    "Significant events"
+                ]
+            }
+        ]
+    },
+
+    {
+        id: "early-childhood",
+        title: "Part II — Early Childhood",
+        children: [
+
+            {
+                id: "ages-3-5",
+                title: "4. Ages 3–5",
+                children: [
+                    "Where I lived",
+                    "Home and family life",
+                    "Preschool / kindergarten",
+                    "Friends",
+                    "Favorite activities",
+                    "Games, toys, books, television and music",
+                    "Things I loved",
+                    "Things I feared",
+                    "Important adults",
+                    "First experiences",
+                    "Family events",
+                    "Trips and holidays",
+                    "Funny and embarrassing memories",
+                    "Difficult experiences",
+                    "What I believed about the world"
+                ]
+            },
+
+            {
+                id: "ages-6-10",
+                title: "5. Ages 6–10 — Primary School",
+                children: [
+                    "First day of school",
+                    "Teachers",
+                    "Academic experiences",
+                    "Friendships",
+                    "Bullying and conflicts",
+                    "Hobbies",
+                    "Sports",
+                    "Family relationships",
+                    "Siblings",
+                    "Home life",
+                    "Vacations",
+                    "Cultural experiences",
+                    "Money and possessions",
+                    "Technology I used",
+                    "Important birthdays",
+                    "Major events of the period",
+                    "Successes and failures",
+                    "What I wanted to become"
+                ]
+            }
+        ]
+    },
+
+    {
+        id: "adolescence",
+        title: "Part III — Adolescence",
+        children: [
+
+            {
+                id: "ages-11-13",
+                title: "6. Ages 11–13",
+                children: [
+                    "Changing relationship with parents",
+                    "School",
+                    "Friends and social groups",
+                    "Personality changes",
+                    "Interests",
+                    "Body, puberty and changing self-image",
+                    "First experiences of independence",
+                    "Conflicts",
+                    "Major family events",
+                    "Things I kept secret",
+                    "Discoveries about myself"
+                ]
+            },
+
+            {
+                id: "ages-14-17",
+                title: "7. Ages 14–17",
+                children: [
+                    "School life",
+                    "Academic successes and failures",
+                    "Friendships",
+                    "Romantic experiences",
+                    "Family relationships",
+                    "Independence",
+                    "Identity",
+                    "Music, films, books, internet and culture",
+                    "Hobbies",
+                    "Parties and social experiences",
+                    "Mistakes",
+                    "Risks and consequences",
+                    "First jobs",
+                    "Major decisions",
+                    "Dreams for adulthood",
+                    "What I thought my future would look like"
+                ]
+            }
+        ]
+    },
+
+    {
+        id: "young-adulthood",
+        title: "Part IV — Becoming an Adult",
+        children: [
+
+            {
+                id: "ages-18-21",
+                title: "8. Ages 18–21",
+                children: [
+                    "Leaving school",
+                    "University, training or work",
+                    "Moving away from home",
+                    "First major financial decisions",
+                    "Relationships",
+                    "Friendships",
+                    "Independence",
+                    "Travel",
+                    "First serious responsibilities",
+                    "Major mistakes",
+                    "Important achievements",
+                    "People who influenced me",
+                    "How my worldview changed"
+                ]
+            },
+
+            {
+                id: "ages-22-25",
+                title: "9. Ages 22–25",
+                children: [
+                    "Career development",
+                    "Relationships",
+                    "Living arrangements",
+                    "Money",
+                    "Education",
+                    "Travel",
+                    "Friendships",
+                    "Family",
+                    "Major decisions",
+                    "Failures",
+                    "Achievements",
+                    "Changes in priorities",
+                    "Who I was becoming"
+                ]
+            },
+
+            {
+                id: "ages-26-30",
+                title: "10. Ages 26–30",
+                children: [
+                    "Career turning points",
+                    "Long-term relationships",
+                    "Marriage or partnership",
+                    "Children",
+                    "Major purchases",
+                    "Major moves",
+                    "Responsibilities",
+                    "Losses",
+                    "Personal beliefs",
+                    "Major life lessons"
+                ]
+            }
+        ]
+    },
+
+    {
+        id: "adulthood",
+        title: "Part V — Adulthood",
+        children: [
+
+            {
+                id: "30s",
+                title: "11. My 30s",
+                children: [
+                    "30–32",
+                    "33–35",
+                    "36–39"
+                ]
+            },
+
+            {
+                id: "40s",
+                title: "12. My 40s",
+                children: [
+                    "40–42",
+                    "43–45",
+                    "46–49"
+                ]
+            },
+
+            {
+                id: "50s",
+                title: "My 50s",
+                children: [
+                    "50–52",
+                    "53–55",
+                    "56–59"
+                ]
+            },
+
+            {
+                id: "60s",
+                title: "My 60s",
+                children: [
+                    "60–62",
+                    "63–65",
+                    "66–69"
+                ]
+            },
+
+            {
+                id: "70s",
+                title: "My 70s",
+                children: [
+                    "70–72",
+                    "73–75",
+                    "76–79"
+                ]
+            },
+
+            {
+                id: "80-plus",
+                title: "My 80s and Beyond",
+                children: [
+                    "80–84",
+                    "85–89",
+                    "90 and beyond"
+                ]
+            }
+        ]
+    },
+
+    {
+        id: "major-subjects",
+        title: "Part VI — Major Life Chapters",
+        children: [
+
+            {
+                id: "family",
+                title: "13. My Family",
+                children: [
+                    "Parents",
+                    "Siblings",
+                    "Grandparents",
+                    "Aunts and uncles",
+                    "Children",
+                    "Extended family",
+                    "Family relationships",
+                    "Family conflicts",
+                    "Family traditions",
+                    "Family stories and secrets",
+                    "People I lost",
+                    "People who shaped me"
+                ]
+            },
+
+            {
+                id: "places",
+                title: "14. The Places I Have Lived",
+                children: [
+                    "Homes",
+                    "Neighborhoods",
+                    "People around me",
+                    "Favorite places",
+                    "Important memories",
+                    "Why I left"
+                ]
+            },
+
+            {
+                id: "education",
+                title: "15. My Education",
+                children: [
+                    "Schools",
+                    "Teachers",
+                    "Subjects",
+                    "Grades and achievements",
+                    "Friends",
+                    "Problems",
+                    "Qualifications",
+                    "Lessons learned",
+                    "People who influenced me"
+                ]
+            },
+
+            {
+                id: "work",
+                title: "16. My Working Life",
+                children: [
+                    "Jobs",
+                    "Employers",
+                    "Positions",
+                    "How I got each job",
+                    "Responsibilities",
+                    "Colleagues",
+                    "Managers",
+                    "Financial circumstances",
+                    "Best experiences",
+                    "Worst experiences",
+                    "What I learned",
+                    "Why I left"
+                ]
+            },
+
+            {
+                id: "relationships",
+                title: "17. My Relationships",
+                children: [
+                    "Important friendships",
+                    "Romantic relationships",
+                    "How relationships began",
+                    "What they meant to me",
+                    "Significant moments",
+                    "Conflicts",
+                    "Endings",
+                    "What I learned"
+                ]
+            },
+
+            {
+                id: "interests",
+                title: "18. My Interests and Passions",
+                children: [
+                    "Books",
+                    "Music",
+                    "Films",
+                    "Sports",
+                    "Games",
+                    "Art",
+                    "Hobbies",
+                    "Travel",
+                    "Collecting",
+                    "Technology",
+                    "Things I became obsessed with",
+                    "Things I eventually abandoned"
+                ]
+            },
+
+            {
+                id: "beliefs",
+                title: "19. My Beliefs and Worldview",
+                children: [
+                    "Values",
+                    "Religion and spirituality",
+                    "Politics and society",
+                    "Philosophy",
+                    "Ideas about family",
+                    "Ideas about money",
+                    "Ideas about work",
+                    "Ideas about love",
+                    "Ideas about success",
+                    "Ideas about death",
+                    "What I believed at different ages",
+                    "What I believe now"
+                ]
+            },
+
+            {
+                id: "difficult-periods",
+                title: "20. Difficult Periods",
+                children: [
+                    "What happened",
+                    "When it happened",
+                    "Who was involved",
+                    "What I felt",
+                    "What I did",
+                    "What happened afterward",
+                    "How it affected later decisions",
+                    "How I understand it today"
+                ]
+            }
+        ]
+    },
+
+    {
+        id: "outside-world",
+        title: "Part VII — The Outside World",
+        children: [
+
+            {
+                id: "world",
+                title: "21. The World I Grew Up In",
+                children: [
+                    "Major historical events",
+                    "Wars and conflicts",
+                    "Political changes",
+                    "Economic conditions",
+                    "Technology",
+                    "Popular culture",
+                    "Major inventions",
+                    "Social changes",
+                    "Local events",
+                    "How the world affected my everyday life",
+                    "What was normal then that seems strange today"
+                ]
+            }
+        ]
+    },
+
+    {
+        id: "everyday",
+        title: "Part VIII — A Record of Everyday Life",
+        children: [
+
+            {
+                id: "ordinary-life",
+                title: "22. What Ordinary Life Was Like",
+                children: [
+                    "What my childhood home smelled like",
+                    "Typical breakfast",
+                    "Family dinners",
+                    "How we communicated",
+                    "How we travelled",
+                    "What clothes I wore",
+                    "What things cost",
+                    "A normal school day",
+                    "Weekends",
+                    "Birthdays",
+                    "Entertainment",
+                    "Technology in the house",
+                    "What I did when bored",
+                    "Family expressions",
+                    "Family jokes",
+                    "Neighborhood sounds",
+                    "Favorite foods",
+                    "Everyday routines"
+                ]
+            }
+        ]
+    },
+
+    {
+        id: "people",
+        title: "Part IX — People",
+        children: [
+
+            {
+                id: "people-shaped-life",
+                title: "23. People Who Shaped My Life",
+                children: [
+                    "Who they were",
+                    "How and when I met them",
+                    "What they looked like",
+                    "Their personality",
+                    "Things they said",
+                    "Things we did together",
+                    "What I admired",
+                    "What I disliked",
+                    "What they taught me",
+                    "Important memories",
+                    "How our relationship changed",
+                    "Where they are now",
+                    "What they ultimately meant to my life"
+                ]
+            }
+        ]
+    },
+
+    {
+        id: "turning-points",
+        title: "Part X — Turning Points",
+        children: [
+
+            {
+                id: "events-changed-direction",
+                title: "24. The Events That Changed My Direction",
+                children: [
+                    "Before — What was my life like?",
+                    "Event — What happened?",
+                    "Decision — What did I choose?",
+                    "After — What changed?",
+                    "Looking back — What do I think now?"
+                ]
+            }
+        ]
+    },
+
+    {
+        id: "who-i-was",
+        title: "Part XI — Who I Was",
+        children: [
+
+            {
+                id: "versions",
+                title: "25. Versions of Myself",
+                children: [
+                    "Me at 5",
+                    "Me at 10",
+                    "Me at 15",
+                    "Me at 20",
+                    "Me at 25",
+                    "Me at 30",
+                    "Me at 40",
+                    "Me at 50",
+                    "Me at 60",
+                    "Me at 70",
+                    "Me today"
+                ]
+            },
+
+            {
+                id: "today",
+                title: "26. Me Today",
+                children: [
+                    "Who I am",
+                    "What matters to me",
+                    "What I am proud of",
+                    "What I regret",
+                    "What I still do not understand",
+                    "What I hope for",
+                    "What I fear",
+                    "What I want the future to contain"
+                ]
+            }
+        ]
+    },
+
+    {
+        id: "archive",
+        title: "Part XII — Documents and Evidence",
+        children: [
+
+            {
+                id: "documents",
+                title: "27. My Personal Archive",
+                children: [
+                    "Birth certificate",
+                    "School records",
+                    "Report cards",
+                    "Diplomas",
+                    "Employment records",
+                    "Old letters",
+                    "Diaries",
+                    "Emails",
+                    "Photographs",
+                    "Videos",
+                    "Audio recordings",
+                    "Tickets",
+                    "Travel documents",
+                    "Awards",
+                    "Newspaper articles",
+                    "Important messages",
+                    "Family documents",
+                    "Objects with significant memories"
+                ]
+            }
+        ]
+    },
+
+    {
+        id: "final",
+        title: "Part XIII — Final Chapters",
+        children: [
+
+            {
+                id: "got-right",
+                title: "28. What I Got Right",
+                children: [
+                    "Decisions",
+                    "Relationships",
+                    "Principles",
+                    "Ordinary choices",
+                    "Things I am proud of"
+                ]
+            },
+
+            {
+                id: "got-wrong",
+                title: "29. What I Got Wrong",
+                children: [
+                    "Mistakes",
+                    "Misjudgments",
+                    "Missed opportunities",
+                    "Things I would approach differently"
+                ]
+            },
+
+            {
+                id: "learned",
+                title: "30. What I Learned",
+                children: [
+                    "Lessons from childhood",
+                    "Lessons from relationships",
+                    "Lessons from work",
+                    "Lessons from failures",
+                    "Lessons from successes",
+                    "Lessons about myself",
+                    "Lessons about other people",
+                    "Lessons about life"
+                ]
+            },
+
+            {
+                id: "never-forgotten",
+                title: "31. Things I Never Want Forgotten",
+                children: [
+                    "Small things that mattered",
+                    "People",
+                    "Places",
+                    "Sounds",
+                    "Smells",
+                    "Objects",
+                    "Moments",
+                    "Family stories"
+                ]
+            },
+
+            {
+                id: "questions",
+                title: "32. Questions I Still Have",
+                children: [
+                    "Questions about myself",
+                    "Questions about my family",
+                    "Questions about my past",
+                    "Unresolved experiences",
+                    "Things I still want to understand"
+                ]
+            },
+
+            {
+                id: "meaning",
+                title: "33. What I Want My Life to Mean",
+                children: [
+                    "What my life has meant",
+                    "What matters most",
+                    "What I want others to remember",
+                    "What I want my life to contribute"
+                ]
+            },
+
+            {
+                id: "future-letter",
+                title: "34. A Letter to My Future Self",
+                children: [
+                    "Where I am now",
+                    "What I hope changes",
+                    "What I hope stays the same",
+                    "Questions for my future self",
+                    "Message to the person I will become"
+                ]
+            }
+        ]
+    }
+];
+
+
+/* =========================================================
+   DATABASE
+   ========================================================= */
+
+const DB_NAME = "MyLifeHistoryDB";
+const DB_VERSION = 2;
+const STORE = "entries";
+const META_STORE = "meta";
+
+let db = null;
+let selectedId = null;
+let saveTimer = null;
+
+
+/* =========================================================
+   DATABASE INITIALIZATION
+   ========================================================= */
+
+function openDatabase() {
+
+    return new Promise((resolve, reject) => {
+
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+        request.onupgradeneeded = event => {
+
+            const database = event.target.result;
+
+            if (!database.objectStoreNames.contains(STORE)) {
+                database.createObjectStore(STORE, {
+                    keyPath: "id"
+                });
+            }
+
+            /*
+               META_STORE holds sync bookkeeping:
+               - a monotonically increasing "rev" counter, bumped on every
+                 local write, used for conflict detection against Drive
+               - the last known Drive file id / modifiedTime we synced with
+               This is deliberately separate from entry data so it survives
+               independent of any one entry and is cheap to read on startup.
+            */
+            if (!database.objectStoreNames.contains(META_STORE)) {
+                database.createObjectStore(META_STORE, {
+                    keyPath: "key"
+                });
+            }
+        };
+
+        request.onsuccess = event => {
+            db = event.target.result;
+
+            db.onerror = event => {
+                showDbError(
+                    "IndexedDB error: " +
+                    (event.target.error?.message || "Unknown error")
+                );
+            };
+
+            resolve(db);
+        };
+
+        request.onerror = event => {
+            reject(event.target.error);
+        };
+    });
+}
+
+
+function showDbError(message) {
+
+    const box = document.getElementById("dbError");
+
+    box.textContent = message;
+    box.style.display = "block";
+}
+
+
+function saveEntry(id, text, options = {}) {
+
+    if (!db) return Promise.reject(new Error("Database unavailable"));
+
+    return new Promise((resolve, reject) => {
+
+        const transaction = db.transaction(STORE, "readwrite");
+        const store = transaction.objectStore(STORE);
+
+        const getReq = store.get(id);
+
+        getReq.onsuccess = () => {
+
+            const existing = getReq.result;
+
+            /*
+               "rev" increases on every local write. Sync uses this,
+               together with updatedAt, to tell whether the local copy
+               or the Drive copy is newer — rather than blindly
+               overwriting whichever was touched last by wall-clock time
+               alone, which breaks across devices with clock drift.
+               importedRev lets an import/sync write set an explicit
+               revision instead of just incrementing.
+            */
+            const rev =
+                options.setRev != null
+                    ? options.setRev
+                    : (existing?.rev || 0) + 1;
+
+            store.put({
+                id: id,
+                text: text,
+                updatedAt:
+                    options.updatedAt ||
+                    new Date().toISOString(),
+                rev
+            });
+        };
+
+        getReq.onerror = () => reject(getReq.error);
+
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+    });
+}
+
+
+/* =========================================================
+   META STORE (sync bookkeeping)
+   ========================================================= */
+
+function getMeta(key) {
+
+    return new Promise((resolve, reject) => {
+
+        const transaction = db.transaction(META_STORE, "readonly");
+        const store = transaction.objectStore(META_STORE);
+        const request = store.get(key);
+
+        request.onsuccess = () =>
+            resolve(request.result?.value ?? null);
+
+        request.onerror = () => reject(request.error);
+    });
+}
+
+
+function setMeta(key, value) {
+
+    return new Promise((resolve, reject) => {
+
+        const transaction = db.transaction(META_STORE, "readwrite");
+        const store = transaction.objectStore(META_STORE);
+
+        store.put({ key, value });
+
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+    });
+}
+
+
+function loadEntry(id) {
+
+    return new Promise((resolve, reject) => {
+
+        const transaction = db.transaction(STORE, "readonly");
+        const store = transaction.objectStore(STORE);
+        const request = store.get(id);
+
+        request.onsuccess = () => {
+            resolve(request.result?.text || "");
+        };
+
+        request.onerror = () => reject(request.error);
+    });
+}
+
+
+function loadEntryFull(id) {
+
+    return new Promise((resolve, reject) => {
+
+        const transaction = db.transaction(STORE, "readonly");
+        const store = transaction.objectStore(STORE);
+        const request = store.get(id);
+
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+
+function loadAllEntries() {
+
+    return new Promise((resolve, reject) => {
+
+        const transaction = db.transaction(STORE, "readonly");
+        const store = transaction.objectStore(STORE);
+        const request = store.getAll();
+
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+
+/* =========================================================
+   TREE NORMALIZATION
+   ========================================================= */
+
+function normalizeTree(nodes, parentId = null, path = []) {
+
+    const result = [];
+
+    nodes.forEach((node, index) => {
+
+        if (typeof node === "string") {
+
+            const id =
+                slugify(
+                    parentId + "-" +
+                    node +
+                    "-" +
+                    index
+                );
+
+            result.push({
+                id,
+                title: node,
+                parentId,
+                path: [...path, node],
+                children: []
+            });
+
+        } else {
+
+            const current = {
+                ...node,
+                parentId,
+                path: [...path, node.title]
+            };
+
+            current.children =
+                normalizeTree(
+                    node.children || [],
+                    node.id,
+                    current.path
+                );
+
+            result.push(current);
+        }
+    });
+
+    return result;
+}
+
+
+function slugify(text) {
+
+    return text
+        .toLowerCase()
+        .normalize("NFKD")
+        .replace(/[^\w\s-]/g, "")
+        .trim()
+        .replace(/\s+/g, "-")
+        .replace(/-+/g, "-");
+}
+
+
+const TREE = normalizeTree(LIFE_TREE);
+
+
+/* =========================================================
+   TREE RENDERING
+   ========================================================= */
+
+let expanded = new Set();
+
+
+function renderTree() {
+
+    const container = document.getElementById("tree");
+
+    container.innerHTML = "";
+
+    TREE.forEach(node => {
+        container.appendChild(renderNode(node));
+    });
+
+    updateSelectedVisual();
+}
+
+
+function renderNode(node) {
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "tree-node";
+    wrapper.dataset.id = node.id;
+
+    const row = document.createElement("div");
+    row.className = "tree-row";
+    row.dataset.id = node.id;
+
+    const hasChildren =
+        node.children &&
+        node.children.length > 0;
+
+    const toggle = document.createElement("button");
+    toggle.className = "toggle";
+
+    if (hasChildren) {
+
+        toggle.textContent =
+            expanded.has(node.id) ? "▼" : "▶";
+
+        toggle.onclick = event => {
+
+            event.stopPropagation();
+
+            if (expanded.has(node.id)) {
+                expanded.delete(node.id);
+            } else {
+                expanded.add(node.id);
+            }
+
+            renderTree();
+        };
+
+    } else {
+        toggle.textContent = "";
+        toggle.disabled = true;
+    }
+
+    const icon = document.createElement("span");
+    icon.className = "node-icon";
+    icon.textContent = hasChildren ? "▣" : "•";
+
+    const title = document.createElement("span");
+    title.className = "node-title";
+    title.textContent = node.title;
+
+    row.appendChild(toggle);
+    row.appendChild(icon);
+    row.appendChild(title);
+
+    row.onclick = () => selectNode(node);
+
+    wrapper.appendChild(row);
+
+    if (
+        hasChildren &&
+        expanded.has(node.id)
+    ) {
+
+        const children =
+            document.createElement("div");
+
+        children.className = "tree-children";
+
+        node.children.forEach(child => {
+            children.appendChild(renderNode(child));
+        });
+
+        wrapper.appendChild(children);
+    }
+
+    return wrapper;
+}
+
+
+function updateSelectedVisual() {
+
+    document
+        .querySelectorAll(".tree-row")
+        .forEach(row => {
+
+            row.classList.toggle(
+                "selected",
+                row.dataset.id === selectedId
+            );
+        });
+}
+
+
+/* =========================================================
+   SELECT / EDIT
+   ========================================================= */
+
+async function selectNode(node) {
+
+    selectedId = node.id;
+
+    updateSelectedVisual();
+
+    document.getElementById("editorTitle")
+        .textContent = node.title;
+
+    document.getElementById("breadcrumb")
+        .textContent = node.path.join("  ›  ");
+
+    const prompt =
+        node.prompt ||
+        "Write whatever you remember. Do not worry about grammar or chronology. Capture facts, memories, people, places, feelings and details.";
+
+    document.getElementById("prompt")
+        .textContent = prompt;
+
+    const editor =
+        document.getElementById("editor");
+
+    editor.disabled = false;
+
+    editor.value = "";
+
+    setSaveStatus("Loading…");
+
+    try {
+
+        const text = await loadEntry(node.id);
+
+        if (selectedId === node.id) {
+
+            editor.value = text;
+
+            updateCounts();
+
+            setSaveStatus(
+                text ? "Saved" : "Not yet written"
+            );
+        }
+
+    } catch (error) {
+
+        console.error(error);
+
+        setSaveStatus("Could not load");
+    }
+
+    editor.focus();
+}
+
+
+document.getElementById("editor")
+    .addEventListener("input", () => {
+
+        updateCounts();
+
+        setSaveStatus("Saving…");
+
+        clearTimeout(saveTimer);
+
+        saveTimer = setTimeout(
+            autosave,
+            500
+        );
+    });
+
+
+async function autosave() {
+
+    if (!selectedId || !db) return;
+
+    const text =
+        document.getElementById("editor").value;
+
+    try {
+
+        await saveEntry(
+            selectedId,
+            text
+        );
+
+        setSaveStatus(
+            "Saved " +
+            new Date().toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit"
+            })
+        );
+
+    } catch (error) {
+
+        console.error(error);
+
+        setSaveStatus("Save failed");
+    }
+}
+
+
+function setSaveStatus(text) {
+
+    document.getElementById("saveStatus")
+        .textContent = text;
+}
+
+
+/* =========================================================
+   COUNTERS
+   ========================================================= */
+
+function updateCounts() {
+
+    const text =
+        document.getElementById("editor").value;
+
+    const words =
+        text.trim()
+            ? text.trim().split(/\s+/).length
+            : 0;
+
+    document.getElementById("wordCount")
+        .textContent =
+        words +
+        (words === 1 ? " word" : " words");
+
+    document.getElementById("charCount")
+        .textContent =
+        text.length +
+        (text.length === 1
+            ? " character"
+            : " characters");
+}
+
+
+/* =========================================================
+   EXPAND / COLLAPSE
+   ========================================================= */
+
+function getAllNodes(nodes, output = []) {
+
+    nodes.forEach(node => {
+
+        output.push(node);
+
+        if (node.children) {
+            getAllNodes(node.children, output);
+        }
+    });
+
+    return output;
+}
+
+
+function expandAll() {
+
+    getAllNodes(TREE)
+        .filter(node => node.children.length)
+        .forEach(node => expanded.add(node.id));
+
+    renderTree();
+}
+
+
+function collapseAll() {
+
+    expanded.clear();
+
+    renderTree();
+}
+
+
+/* =========================================================
+   SEARCH
+   ========================================================= */
+
+function filterTree(query) {
+
+    query = query.trim().toLowerCase();
+
+    document
+        .querySelectorAll(".tree-row")
+        .forEach(row => {
+
+            const text =
+                row
+                    .querySelector(".node-title")
+                    .textContent
+                    .toLowerCase();
+
+            row.style.display =
+                !query || text.includes(query)
+                    ? "flex"
+                    : "none";
+        });
+
+    if (query) {
+        expandAll();
+    }
+}
+
+
+/* =========================================================
+   EXPORT
+   ========================================================= */
+
+async function exportData() {
+
+    try {
+
+        const entries =
+            await loadAllEntries();
+
+        const backup = {
+
+            application: "My Life History",
+
+            version: 1,
+
+            exportedAt:
+                new Date().toISOString(),
+
+            entries
+        };
+
+        const blob =
+            new Blob(
+                [
+                    JSON.stringify(
+                        backup,
+                        null,
+                        2
+                    )
+                ],
+                {
+                    type: "application/json"
+                }
+            );
+
+        const url =
+            URL.createObjectURL(blob);
+
+        const a =
+            document.createElement("a");
+
+        a.href = url;
+
+        a.download =
+            "my-life-history-backup-" +
+            new Date()
+                .toISOString()
+                .slice(0, 10) +
+            ".json";
+
+        document.body.appendChild(a);
+
+        a.click();
+
+        a.remove();
+
+        URL.revokeObjectURL(url);
+
+    } catch (error) {
+
+        alert(
+            "Could not export your data.\n\n" +
+            error.message
+        );
+    }
+}
+
+
+/* =========================================================
+   IMPORT
+   ========================================================= */
+
+async function importData(event) {
+
+    const file =
+        event.target.files[0];
+
+    if (!file) return;
+
+    try {
+
+        const text =
+            await file.text();
+
+        const backup =
+            JSON.parse(text);
+
+        if (
+            !backup.entries ||
+            !Array.isArray(backup.entries)
+        ) {
+            throw new Error(
+                "This does not appear to be a valid Life History backup."
+            );
+        }
+
+        const confirmed =
+            confirm(
+                "Import this backup?\n\n" +
+                "Existing entries with matching IDs " +
+                "will be replaced."
+            );
+
+        if (!confirmed) return;
+
+        for (const entry of backup.entries) {
+
+            await saveEntry(
+                entry.id,
+                entry.text || ""
+            );
+        }
+
+        alert(
+            "Import completed successfully."
+        );
+
+        if (selectedId) {
+
+            const current =
+                await loadEntry(selectedId);
+
+            document.getElementById("editor")
+                .value = current;
+
+            updateCounts();
+
+            setSaveStatus("Saved");
+        }
+
+    } catch (error) {
+
+        alert(
+            "Import failed.\n\n" +
+            error.message
+        );
+
+    } finally {
+
+        event.target.value = "";
+    }
+}
+
+
+/* =========================================================
+   KEYBOARD SHORTCUTS
+   ========================================================= */
+
+document.addEventListener("keydown", event => {
+
+    /*
+       Ctrl/Cmd + S
+       Force immediate save
+    */
+
+    if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "s"
+    ) {
+
+        event.preventDefault();
+
+        clearTimeout(saveTimer);
+
+        autosave();
+    }
+});
+
+
+/* =========================================================
+   GOOGLE DRIVE SYNC
+   =========================================================
+
+   HOW THIS WORKS
+   --------------
+   - Auth uses Google Identity Services (GIS), Google's current
+     client-side OAuth library. No password or credential of yours
+     is ever stored by this app — Google handles sign-in on
+     accounts.google.com and hands this page a short-lived access
+     token.
+   - The backup is stored as a single JSON file
+     ("my-life-history-sync.json") in a hidden per-app folder in
+     your Drive (the "appDataFolder"), using the same scope as
+     Google's official quickstart apps. appDataFolder is invisible
+     in your normal Drive listing and only this app (using this
+     Client ID) can read it — nothing else on your Drive is touched.
+   - Conflict detection compares a revision counter + timestamp
+     saved locally against the revision/timestamp embedded in the
+     Drive file. If Drive is strictly newer, we ask before
+     overwriting anything.
+
+   SETUP REQUIRED BEFORE THIS WORKS
+   ---------------------------------
+   1. Go to https://console.cloud.google.com/ and create (or reuse)
+      a project.
+   2. Enable the "Google Drive API" for that project.
+   3. Under "APIs & Services > Credentials", create an
+      "OAuth 2.0 Client ID" of type "Web application".
+   4. Add the exact URL this file is hosted at (e.g. your
+      published artifact URL, or http://localhost:PORT if you run
+      it locally) to "Authorized JavaScript origins".
+   5. Copy the Client ID (ends in .apps.googleusercontent.com) into
+      GOOGLE_CLIENT_ID below.
+   6. While your OAuth consent screen is in "Testing" mode, add
+      your own Google account under "Test users" or sign-in will
+      be refused.
+
+   Until GOOGLE_CLIENT_ID is filled in, all Drive buttons stay
+   disabled and the app works purely from IndexedDB, exactly as
+   before.
+   ========================================================= */
+
+const GOOGLE_CLIENT_ID = "258020158676-o4g79pmqi917phqfpqpmc3hff83ckh3d.apps.googleusercontent.com";
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
+const DRIVE_FILE_NAME = "my-life-history-sync.json";
+
+const DriveSync = (() => {
+
+    let tokenClient = null;
+    let accessToken = null;
+    let driveFileId = null;   // cached Drive file id, once known
+    let gisLoaded = false;
+    let pendingConflict = null; // resolver for the conflict modal
+
+    function setStatus(text, kind) {
+
+        const el = document.getElementById("driveStatus");
+        el.textContent = "Drive: " + text;
+        el.className = "drive-status" + (kind ? " " + kind : "");
+    }
+
+    function setButtons({ signedIn }) {
+
+        document.getElementById("driveSignInBtn").textContent =
+            signedIn ? "Signed in ✓" : "Sign in to Drive";
+
+        document.getElementById("driveSignInBtn").disabled = signedIn;
+        document.getElementById("driveUploadBtn").disabled = !signedIn;
+        document.getElementById("driveDownloadBtn").disabled = !signedIn;
+        document.getElementById("driveSyncBtn").disabled = !signedIn;
+    }
+
+    /*
+       Load the Google Identity Services script on demand rather
+       than always paying for it, and rather than assuming it's
+       already on the page.
+    */
+    function loadGis() {
+
+        if (gisLoaded) return Promise.resolve();
+
+        return new Promise((resolve, reject) => {
+
+            const script = document.createElement("script");
+            script.src = "https://accounts.google.com/gsi/client";
+            script.async = true;
+            script.onload = () => { gisLoaded = true; resolve(); };
+            script.onerror = () =>
+                reject(new Error("Could not load Google Identity Services"));
+
+            document.head.appendChild(script);
+        });
+    }
+
+    async function init() {
+
+        if (!GOOGLE_CLIENT_ID) {
+            setStatus(
+                "not configured — add a Google OAuth Client ID in the code to enable sync",
+                "err"
+            );
+            return;
+        }
+
+        try {
+
+            await loadGis();
+
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: GOOGLE_CLIENT_ID,
+                scope: DRIVE_SCOPE,
+                callback: () => {} // overridden per-call below
+            });
+
+            setStatus("ready — not signed in");
+
+        } catch (error) {
+
+            console.error(error);
+            setStatus("failed to load Google sign-in", "err");
+        }
+    }
+
+    function signIn() {
+
+        if (!tokenClient) return;
+
+        tokenClient.callback = async response => {
+
+            if (response.error) {
+                setStatus("sign-in failed: " + response.error, "err");
+                return;
+            }
+
+            accessToken = response.access_token;
+            setButtons({ signedIn: true });
+            setStatus("signed in");
+
+            /*
+               Auto-run a sync right after sign-in so the app is
+               immediately in a consistent state across devices,
+               rather than making the user remember to click Sync.
+            */
+            await sync();
+        };
+
+        tokenClient.requestAccessToken({ prompt: "" });
+    }
+
+    function authHeaders() {
+        return { Authorization: "Bearer " + accessToken };
+    }
+
+    /*
+       Find our backup file inside the hidden appDataFolder.
+       Returns null if it doesn't exist yet (first-ever sync).
+    */
+    async function findDriveFile() {
+
+        const url =
+            "https://www.googleapis.com/drive/v3/files" +
+            "?spaces=appDataFolder" +
+            "&fields=files(id,modifiedTime,name)" +
+            "&q=" + encodeURIComponent(`name='${DRIVE_FILE_NAME}'`);
+
+        const res = await fetch(url, { headers: authHeaders() });
+
+        if (!res.ok) {
+            throw new Error("Drive lookup failed: " + res.status);
+        }
+
+        const data = await res.json();
+
+        return data.files && data.files.length ? data.files[0] : null;
+    }
+
+    async function buildLocalBackup() {
+
+        const entries = await loadAllEntries();
+        const localRev = (await getMeta("syncRev")) || 0;
+
+        return {
+            application: "My Life History",
+            version: 1,
+            syncRev: localRev,
+            exportedAt: new Date().toISOString(),
+            entries
+        };
+    }
+
+    async function downloadDriveBackup(fileId) {
+
+        const res = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+            { headers: authHeaders() }
+        );
+
+        if (!res.ok) {
+            throw new Error("Drive download failed: " + res.status);
+        }
+
+        return res.json();
+    }
+
+    async function uploadBackup(fileId, backup) {
+
+        const metadata = {
+            name: DRIVE_FILE_NAME,
+            ...(fileId ? {} : { parents: ["appDataFolder"] })
+        };
+
+        const boundary = "lifehistory_" + Date.now();
+        const body =
+            `--${boundary}\r\n` +
+            "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
+            JSON.stringify(metadata) + "\r\n" +
+            `--${boundary}\r\n` +
+            "Content-Type: application/json\r\n\r\n" +
+            JSON.stringify(backup, null, 2) + "\r\n" +
+            `--${boundary}--`;
+
+        const url = fileId
+            ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`
+            : "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart";
+
+        const res = await fetch(url, {
+            method: fileId ? "PATCH" : "POST",
+            headers: {
+                ...authHeaders(),
+                "Content-Type": `multipart/related; boundary=${boundary}`
+            },
+            body
+        });
+
+        if (!res.ok) {
+            throw new Error("Drive upload failed: " + res.status);
+        }
+
+        return res.json();
+    }
+
+    /*
+       Explicit one-way push: local -> Drive, overwriting whatever
+       is there. Used when the user deliberately chooses "Upload"
+       rather than a two-way sync.
+    */
+    async function uploadToDrive() {
+
+        if (!accessToken) return;
+
+        setStatus("uploading…");
+
+        try {
+
+            const file = await findDriveFile();
+            const backup = await buildLocalBackup();
+            const bumpedRev = (backup.syncRev || 0) + 1;
+            backup.syncRev = bumpedRev;
+
+            await uploadBackup(file?.id, backup);
+            await setMeta("syncRev", bumpedRev);
+            await setMeta("lastSyncedAt", new Date().toISOString());
+
+            setStatus("uploaded just now", "ok");
+
+        } catch (error) {
+
+            console.error(error);
+            setStatus("upload failed — " + error.message, "err");
+        }
+    }
+
+    /*
+       Explicit one-way pull: Drive -> local, overwriting local
+       entries whose ids match. Used when the user deliberately
+       chooses "Download" rather than a two-way sync.
+    */
+    async function downloadFromDrive() {
+
+        if (!accessToken) return;
+
+        setStatus("downloading…");
+
+        try {
+
+            const file = await findDriveFile();
+
+            if (!file) {
+                setStatus("no backup found on Drive yet", "err");
+                return;
+            }
+
+            const backup = await downloadDriveBackup(file.id);
+
+            if (!backup.entries || !Array.isArray(backup.entries)) {
+                throw new Error("Drive backup is not in a recognized format");
+            }
+
+            const confirmed = confirm(
+                "Download from Drive?\n\n" +
+                "This will overwrite this device's entries with the " +
+                "Drive copy for any matching sections."
+            );
+
+            if (!confirmed) return;
+
+            for (const entry of backup.entries) {
+                await saveEntry(entry.id, entry.text || "", {
+                    setRev: entry.rev,
+                    updatedAt: entry.updatedAt
+                });
+            }
+
+            await setMeta("syncRev", backup.syncRev || 0);
+            await setMeta("lastSyncedAt", new Date().toISOString());
+
+            if (selectedId) {
+                const current = await loadEntry(selectedId);
+                document.getElementById("editor").value = current;
+                updateCounts();
+            }
+
+            setStatus("downloaded just now", "ok");
+
+        } catch (error) {
+
+            console.error(error);
+            setStatus("download failed — " + error.message, "err");
+        }
+    }
+
+    /*
+       Two-way sync with conflict detection. This is the button
+       meant for routine use.
+
+       Logic:
+       - No Drive file yet -> just upload (first sync ever).
+       - Drive's syncRev <= our last-known-synced local syncRev
+         -> Drive has nothing new; push local up.
+       - Local has unsynced local writes (current local rev
+         differs from what we last pushed) AND Drive's syncRev has
+         also moved past what we last pulled -> genuine conflict,
+         ask the user.
+       - Otherwise -> Drive is strictly ahead; pull it down.
+    */
+    async function sync() {
+
+        if (!accessToken) return;
+
+        setStatus("syncing…");
+
+        try {
+
+            const file = await findDriveFile();
+            const lastSyncedRev = (await getMeta("syncRev")) || 0;
+            const localBackup = await buildLocalBackup();
+            const localHasChanges = localBackup.syncRev !== lastSyncedRev;
+
+            if (!file) {
+                // Nothing on Drive yet: first sync just pushes up.
+                await uploadToDrive();
+                return;
+            }
+
+            const driveBackup = await downloadDriveBackup(file.id);
+            const driveRev = driveBackup.syncRev || 0;
+            const driveHasChanges = driveRev > lastSyncedRev;
+
+            if (!driveHasChanges) {
+                // Drive is stale relative to what we already know; push local up.
+                await uploadToDrive();
+                return;
+            }
+
+            if (!localHasChanges) {
+                // We have nothing new locally; safe to just pull.
+                await applyRemote(driveBackup);
+                setStatus("synced — pulled latest from Drive", "ok");
+                return;
+            }
+
+            // Both sides changed since the last common sync point.
+            const choice = await promptConflict(localBackup, driveBackup);
+
+            if (choice === "keepLocal") {
+                await uploadToDrive();
+            } else if (choice === "keepDrive") {
+                await applyRemote(driveBackup);
+            } else if (choice === "merge") {
+                await mergeAndUpload(localBackup, driveBackup);
+            }
+
+            setStatus("synced (conflict resolved: " + choice + ")", "ok");
+
+        } catch (error) {
+
+            console.error(error);
+            setStatus("sync failed — " + error.message, "err");
+        }
+    }
+
+    async function applyRemote(backup) {
+
+        for (const entry of backup.entries) {
+            await saveEntry(entry.id, entry.text || "", {
+                setRev: entry.rev,
+                updatedAt: entry.updatedAt
+            });
+        }
+
+        await setMeta("syncRev", backup.syncRev || 0);
+        await setMeta("lastSyncedAt", new Date().toISOString());
+
+        if (selectedId) {
+            const current = await loadEntry(selectedId);
+            document.getElementById("editor").value = current;
+            updateCounts();
+        }
+    }
+
+    /*
+       Merge strategy: per entry, keep whichever side has the more
+       recent updatedAt. This is a per-section merge (each life
+       history section is its own record), so unlike a single big
+       document, sections edited on different devices merge
+       cleanly without losing either side's writing.
+    */
+    async function mergeAndUpload(localBackup, driveBackup) {
+
+        const driveById = new Map(
+            driveBackup.entries.map(e => [e.id, e])
+        );
+
+        const merged = new Map(
+            localBackup.entries.map(e => [e.id, e])
+        );
+
+        for (const [id, driveEntry] of driveById) {
+
+            const localEntry = merged.get(id);
+
+            if (!localEntry) {
+                merged.set(id, driveEntry);
+                continue;
+            }
+
+            const driveNewer =
+                new Date(driveEntry.updatedAt) >
+                new Date(localEntry.updatedAt);
+
+            if (driveNewer) {
+                merged.set(id, driveEntry);
+            }
+        }
+
+        for (const entry of merged.values()) {
+            await saveEntry(entry.id, entry.text || "", {
+                setRev: entry.rev,
+                updatedAt: entry.updatedAt
+            });
+        }
+
+        const bumpedRev =
+            Math.max(localBackup.syncRev, driveBackup.syncRev) + 1;
+
+        const file = await findDriveFile();
+        const finalBackup = await buildLocalBackup();
+        finalBackup.syncRev = bumpedRev;
+
+        await uploadBackup(file?.id, finalBackup);
+        await setMeta("syncRev", bumpedRev);
+        await setMeta("lastSyncedAt", new Date().toISOString());
+
+        if (selectedId) {
+            const current = await loadEntry(selectedId);
+            document.getElementById("editor").value = current;
+            updateCounts();
+        }
+    }
+
+    function promptConflict(localBackup, driveBackup) {
+
+        const modal = document.getElementById("conflictModal");
+        const body = document.getElementById("conflictBody");
+
+        body.innerHTML =
+            "<p>This device and your Google Drive backup have " +
+            "both changed since they last synced.</p>" +
+            `<ul>
+                <li>This device: ${localBackup.entries.length} sections in local storage, last edited just now.</li>
+                <li>Drive: last uploaded ${new Date(driveBackup.exportedAt).toLocaleString()}.</li>
+            </ul>` +
+            "<p><strong>Keep both (merge)</strong> is usually the " +
+            "safest choice — it keeps whichever version of each " +
+            "individual section was edited most recently, on either " +
+            "device, rather than discarding a whole side.</p>";
+
+        modal.classList.add("open");
+
+        return new Promise(resolve => {
+            pendingConflict = resolve;
+        });
+    }
+
+    function _resolveConflict(choice) {
+
+        document.getElementById("conflictModal").classList.remove("open");
+
+        if (pendingConflict) {
+            pendingConflict(choice);
+            pendingConflict = null;
+        }
+    }
+
+    return {
+        init,
+        signIn,
+        uploadToDrive,
+        downloadFromDrive,
+        sync,
+        _resolveConflict
+    };
+
+})();
+
+
+/* =========================================================
+   AUTOSAVE STAYS OFFLINE-INDEPENDENT
+   =========================================================
+
+   autosave() above writes only to IndexedDB and never calls out
+   to Drive, so typing continues to save locally with no network
+   required. Drive sync is purely something the user (or a future
+   periodic timer) triggers on top of that, never a dependency of
+   the core editing loop.
+   ========================================================= */
+
+
+/* =========================================================
+   START APPLICATION
+   ========================================================= */
+
+async function init() {
+
+    try {
+
+        await openDatabase();
+
+        renderTree();
+
+        /*
+           Open the first major section automatically.
+        */
+
+        TREE.forEach(node => expanded.add(node.id));
+
+        renderTree();
+
+        /*
+           Select the first section.
+        */
+
+        if (TREE[0]) {
+            selectNode(TREE[0]);
+        }
+
+        await DriveSync.init();
+
+    } catch (error) {
+
+        console.error(error);
+
+        showDbError(
+            "This browser could not initialize IndexedDB. " +
+            "Your writing cannot be safely stored until IndexedDB is available."
+        );
+    }
+}
+
+init();
+
+</script>
+
+</body>
+</html>
