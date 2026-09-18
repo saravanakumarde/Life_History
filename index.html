@@ -250,6 +250,48 @@
         font-size: 11px;
     }
 
+    #savedEventsRow {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 22px;
+        background: #f2f8f2;
+        border-bottom: 1px solid #cfe8cf;
+        font-size: 12px;
+    }
+
+    .saved-events-label {
+        color: #2c6e2c;
+        font-weight: 600;
+    }
+
+    .saved-event-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: white;
+        border: 1px solid #b9dfb9;
+        border-radius: 20px;
+        padding: 3px 6px 3px 12px;
+        font-size: 12px;
+        color: #24522a;
+    }
+
+    .saved-event-chip .remove-event-btn {
+        background: transparent;
+        border: none;
+        color: var(--muted);
+        padding: 3px 6px;
+        cursor: pointer;
+        border-radius: 14px;
+    }
+
+    .saved-event-chip .remove-event-btn:hover {
+        background: #fee;
+        color: var(--danger);
+    }
+
     #dateSuggestBar {
         display: flex;
         flex-wrap: wrap;
@@ -267,19 +309,21 @@
     }
 
     .date-suggest-chip {
-        display: inline-flex;
+        display: flex;
+        flex-wrap: wrap;
         align-items: center;
         gap: 6px;
         background: white;
         border: 1px solid #e0c98a;
-        border-radius: 20px;
-        padding: 3px 6px 3px 12px;
+        border-radius: 10px;
+        padding: 8px 10px;
         font-size: 12px;
+        max-width: 100%;
     }
 
     .date-suggest-chip button {
         border-radius: 14px;
-        padding: 3px 9px;
+        padding: 4px 10px;
         font-size: 11px;
     }
 
@@ -289,6 +333,19 @@
         color: var(--muted);
         padding: 3px 6px;
         cursor: pointer;
+    }
+
+    .date-suggest-category,
+    .date-suggest-label-input {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 4px 7px;
+        font-size: 12px;
+        font-family: inherit;
+    }
+
+    .date-suggest-label-input {
+        width: 160px;
     }
 
     #editorTitle {
@@ -567,6 +624,10 @@
             flex-wrap: wrap;
         }
 
+        #savedEventsRow {
+            padding: 6px 14px;
+        }
+
         #calendarView {
             padding: 10px;
         }
@@ -732,7 +793,7 @@
 <aside id="sidebar">
 
     <div class="app-header">
-        <h1 class="app-title">My Life History</h1>
+        <h1 class="app-title" id="appTitle">My Life History</h1>
         <div class="app-subtitle">
             Your personal history — from birth onward
         </div>
@@ -818,6 +879,8 @@
         <span id="dateHint" class="date-hint"></span>
         <button id="clearDateBtn" onclick="clearEntryDate()" style="display:none;">Clear date</button>
     </div>
+
+    <div id="savedEventsRow" style="display:none;"></div>
 
     <div id="dateSuggestBar" style="display:none;"></div>
 
@@ -1719,6 +1782,24 @@ const LIFE_TREE = [
    DATABASE
    ========================================================= */
 
+/*
+   Bump this on every change you ship, up to V1.99, then roll to
+   V2.0. This is the ONLY place the version number needs to
+   change -- it's applied to both the browser tab title and the
+   heading in the top-left corner automatically on load.
+
+   The script tag runs after the HTML above it has already been
+   parsed (it sits right before </body>), so #appTitle is already
+   in the DOM here -- no need to wait for DOMContentLoaded.
+*/
+const APP_VERSION = "V1.7";
+
+document.title = `My Life History_${APP_VERSION}`;
+
+const appTitleEl = document.getElementById("appTitle");
+if (appTitleEl) appTitleEl.textContent = `My Life History_${APP_VERSION}`;
+
+
 const DB_NAME = "MyLifeHistoryDB";
 const DB_VERSION = 2;
 const STORE = "entries";
@@ -1836,10 +1917,24 @@ function saveEntry(id, text, options = {}) {
                     ? options.eventDate
                     : (existing?.eventDate ?? null);
 
+            /*
+               events is a list of { date, label } entries — labeled
+               calendar events detected in the text and confirmed by
+               the person (e.g. "Date of Birth" for a date mentioned
+               mid-paragraph). Same carry-forward rule as eventDate:
+               a plain text-only autosave must not silently drop
+               previously confirmed events.
+            */
+            const events =
+                options.hasOwnProperty("events")
+                    ? options.events
+                    : (existing?.events ?? []);
+
             store.put({
                 id: id,
                 text: text,
                 eventDate,
+                events,
                 updatedAt:
                     options.updatedAt ||
                     new Date().toISOString(),
@@ -1866,6 +1961,37 @@ async function saveEntryDate(id, eventDate) {
     const current = await loadEntryFull(id);
 
     return saveEntry(id, current?.text || "", { eventDate });
+}
+
+
+/*
+   Adds one labeled event ({date, label}) to a section's "events"
+   list, used by the in-text date detector. Unlike eventDate (one
+   unlabeled date from the picker, used as the section's own
+   place on the calendar), a section can carry several labeled
+   events — e.g. one paragraph mentioning both a birth date and a
+   wedding date. Each gets its own calendar entry, in its own
+   words, rather than being folded into the section title.
+*/
+async function saveEntryEvent(id, isoDate, label) {
+
+    const current = await loadEntryFull(id);
+    const events = Array.isArray(current?.events) ? [...current.events] : [];
+
+    events.push({ date: isoDate, label });
+
+    return saveEntry(id, current?.text || "", { events });
+}
+
+
+async function removeEntryEvent(id, index) {
+
+    const current = await loadEntryFull(id);
+    const events = Array.isArray(current?.events) ? [...current.events] : [];
+
+    events.splice(index, 1);
+
+    return saveEntry(id, current?.text || "", { events });
 }
 
 
@@ -2196,6 +2322,8 @@ async function selectNode(node) {
     // for a moment while the new text loads.
     document.getElementById("dateSuggestBar").style.display = "none";
     document.getElementById("dateSuggestBar").innerHTML = "";
+    document.getElementById("savedEventsRow").style.display = "none";
+    document.getElementById("savedEventsRow").innerHTML = "";
 
     setSaveStatus("Loading…");
     setDateHint("");
@@ -2213,6 +2341,7 @@ async function selectNode(node) {
 
             updateCounts();
             updateClearDateButton();
+            renderSavedEvents(record?.events || []);
 
             setSaveStatus(
                 text ? "Saved" : "Not yet written"
@@ -2348,24 +2477,42 @@ async function getDatedEntries() {
         getAllNodes(TREE).map(n => [n.id, n])
     );
 
-    return records
-        .filter(r => r.eventDate)
-        .map(r => {
+    const entries = [];
 
-            const node = nodesById.get(r.id);
-            if (!node) return null; // orphaned record; skip defensively
+    records.forEach(r => {
+
+        const node = nodesById.get(r.id);
+        if (!node) return; // orphaned record; skip defensively
+
+        (r.events || []).forEach((event, index) => {
+
+            entries.push({
+                id: r.id,
+                eventIndex: index,
+                title: event.label,
+                path: node.path,
+                startDate: event.date,
+                endDate: event.date,
+                labeled: true
+            });
+        });
+
+        if (r.eventDate) {
 
             const [startStr, endStr] = r.eventDate.split("/");
 
-            return {
+            entries.push({
                 id: r.id,
                 title: node.title,
                 path: node.path,
                 startDate: startStr,
-                endDate: endStr || startStr
-            };
-        })
-        .filter(Boolean);
+                endDate: endStr || startStr,
+                labeled: false
+            });
+        }
+    });
+
+    return entries;
 }
 
 
@@ -2759,14 +2906,48 @@ async function scanEditorForDates() {
     const alreadySetDate = current?.eventDate
         ? current.eventDate.split("/")[0]
         : null;
+    const savedEventDates = new Set(
+        (current?.events || []).map(e => e.date)
+    );
 
     const toSuggest = matches.filter(match =>
         match.isoDate !== alreadySetDate &&
+        !savedEventDates.has(match.isoDate) &&
         !dismissedDateSuggestions.has(selectedId + "|" + match.isoDate)
     );
 
     renderDateSuggestions(toSuggest);
 }
+
+
+const EVENT_CATEGORIES = [
+    "Date of Birth",
+    "Date of Death",
+    "Marriage / Wedding",
+    "Engagement",
+    "Anniversary",
+    "Graduation",
+    "First Day of School",
+    "First Day of Job",
+    "Job Change",
+    "Retirement",
+    "Moved House",
+    "Moved to a New City",
+    "Moved to a New Country",
+    "Diagnosis",
+    "Surgery / Hospital Stay",
+    "Recovery",
+    "Birth of a Child",
+    "Birth of a Grandchild",
+    "Baptism / Naming Ceremony",
+    "Religious Ceremony",
+    "Achievement / Award",
+    "Purchase (Home, Car, etc.)",
+    "Travel / Trip",
+    "Reunion",
+    "Loss / Bereavement",
+    "Other"
+];
 
 
 function renderDateSuggestions(matches) {
@@ -2800,10 +2981,53 @@ function renderDateSuggestions(matches) {
             `"${match.raw}" → ${formatDisplayDate(match.isoDate)}`;
         chip.appendChild(text);
 
+        const categorySelect = document.createElement("select");
+        categorySelect.className = "date-suggest-category";
+
+        const blankOption = document.createElement("option");
+        blankOption.value = "";
+        blankOption.textContent = "Choose event type…";
+        categorySelect.appendChild(blankOption);
+
+        EVENT_CATEGORIES.forEach(category => {
+            const opt = document.createElement("option");
+            opt.value = category;
+            opt.textContent = category;
+            categorySelect.appendChild(opt);
+        });
+
+        chip.appendChild(categorySelect);
+
+        const labelInput = document.createElement("input");
+        labelInput.type = "text";
+        labelInput.className = "date-suggest-label-input";
+        labelInput.placeholder = "Or type your own label…";
+        chip.appendChild(labelInput);
+
+        // Picking a category fills the free-text box, but the
+        // person can still edit it afterward — the dropdown is a
+        // shortcut, not a restriction to only those categories.
+        categorySelect.addEventListener("change", () => {
+            if (categorySelect.value) {
+                labelInput.value = categorySelect.value;
+            }
+        });
+
         const acceptBtn = document.createElement("button");
         acceptBtn.className = "primary";
-        acceptBtn.textContent = "Use this date";
-        acceptBtn.onclick = () => acceptDateSuggestion(match.isoDate);
+        acceptBtn.textContent = "Save to calendar";
+        acceptBtn.onclick = () => {
+
+            const finalLabel = labelInput.value.trim();
+
+            if (!finalLabel) {
+                labelInput.focus();
+                labelInput.placeholder = "Enter a label first…";
+                return;
+            }
+
+            acceptDateSuggestion(match.isoDate, finalLabel);
+        };
         chip.appendChild(acceptBtn);
 
         const dismissBtn = document.createElement("button");
@@ -2818,29 +3042,102 @@ function renderDateSuggestions(matches) {
 }
 
 
-async function acceptDateSuggestion(isoDate) {
+async function acceptDateSuggestion(isoDate, label) {
 
     if (!selectedId) return;
 
-    document.getElementById("entryDate").value = isoDate;
-
     try {
 
-        await saveEntryDate(selectedId, isoDate);
-        setDateHint("Date saved from your text");
-        updateClearDateButton();
+        await saveEntryEvent(selectedId, isoDate, label);
+        setDateHint(`"${label}" saved to the calendar`);
         refreshCalendarIfOpen();
+
+        const updated = await loadEntryFull(selectedId);
+        renderSavedEvents(updated?.events || []);
 
     } catch (error) {
 
         console.error(error);
-        setDateHint("Could not save date");
+        setDateHint("Could not save event");
     }
 
-    // Re-scan so this date drops out of the suggestion bar (it now
-    // matches the section's set date) while any other detected
-    // dates in the same text remain offered.
+    // Re-scan; the accepted date now has a saved event and drops
+    // out of the suggestion bar automatically, while any other
+    // detected dates in the same text remain offered.
     scanEditorForDates();
+}
+
+
+/*
+   Renders this section's saved labeled events as a persistent row
+   of chips -- separate from the transient dateHint text, so the
+   confirmation that a label was saved doesn't just flash and
+   disappear the next time the hint text is overwritten. Each chip
+   can be removed individually.
+*/
+function renderSavedEvents(events) {
+
+    const row = document.getElementById("savedEventsRow");
+
+    if (!events.length) {
+        row.style.display = "none";
+        row.innerHTML = "";
+        return;
+    }
+
+    row.style.display = "flex";
+    row.innerHTML = "";
+
+    const label = document.createElement("span");
+    label.className = "saved-events-label";
+    label.textContent =
+        events.length === 1 ? "Saved event:" : "Saved events:";
+    row.appendChild(label);
+
+    events.forEach((event, index) => {
+
+        const chip = document.createElement("span");
+        chip.className = "saved-event-chip";
+
+        const text = document.createElement("span");
+        text.textContent = `${event.label} — ${formatDisplayDate(event.date)}`;
+        chip.appendChild(text);
+
+        const removeBtn = document.createElement("button");
+        removeBtn.className = "remove-event-btn";
+        removeBtn.textContent = "✕";
+        removeBtn.title = "Remove this event";
+        removeBtn.onclick = () => handleRemoveEvent(index);
+        chip.appendChild(removeBtn);
+
+        row.appendChild(chip);
+    });
+}
+
+
+async function handleRemoveEvent(index) {
+
+    if (!selectedId) return;
+
+    try {
+
+        await removeEntryEvent(selectedId, index);
+
+        const updated = await loadEntryFull(selectedId);
+        renderSavedEvents(updated?.events || []);
+
+        refreshCalendarIfOpen();
+
+        // The removed date's text may still be in the editor, so
+        // offer it again rather than requiring the person to
+        // retype something to re-trigger the suggestion.
+        scanEditorForDates();
+
+    } catch (error) {
+
+        console.error(error);
+        setDateHint("Could not remove event");
+    }
 }
 
 
