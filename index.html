@@ -140,6 +140,24 @@
         font-weight: 600;
     }
 
+    .calendar-row {
+        margin: 8px 10px 0;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        font-weight: 600;
+        font-size: 13px;
+    }
+
+    .calendar-row.selected {
+        background: var(--accent-light);
+        color: #2455c5;
+        border-color: var(--accent);
+    }
+
+    .calendar-icon {
+        font-size: 15px;
+    }
+
     .toggle {
         width: 18px;
         min-width: 18px;
@@ -192,6 +210,46 @@
         margin-bottom: 3px;
     }
 
+    #dateRow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 22px;
+        background: #fafbfc;
+        border-bottom: 1px solid var(--border);
+        font-size: 12px;
+        color: var(--muted);
+    }
+
+    #dateRow label {
+        font-weight: 600;
+    }
+
+    #entryDate {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 4px 8px;
+        font-size: 12px;
+        font-family: inherit;
+        color: var(--text);
+        background: white;
+    }
+
+    #entryDate:disabled {
+        background: #f2f3f5;
+        color: var(--muted);
+    }
+
+    .date-hint {
+        color: var(--muted);
+        font-style: italic;
+    }
+
+    #clearDateBtn {
+        padding: 4px 8px;
+        font-size: 11px;
+    }
+
     #editorTitle {
         margin: 0;
         font-size: 21px;
@@ -240,6 +298,139 @@
         font: 16px/1.75 Georgia, "Times New Roman", serif;
         color: #24272c;
         background: white;
+    }
+
+    /* CALENDAR VIEW */
+
+    #calendarView {
+        flex: 1;
+        min-height: 0;
+        padding: 20px 25px;
+        overflow: auto;
+    }
+
+    .calendar-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 14px;
+        flex-wrap: wrap;
+    }
+
+    #calendarMonthLabel {
+        font-weight: 700;
+        font-size: 16px;
+        min-width: 140px;
+        text-align: center;
+    }
+
+    .calendar-view-toggle {
+        margin-left: auto;
+        display: flex;
+        gap: 6px;
+    }
+
+    #calendarGrid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 6px;
+        max-width: 1000px;
+    }
+
+    .cal-daylabel {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+        text-align: center;
+        padding: 4px 0;
+    }
+
+    .cal-day {
+        min-height: 80px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 5px;
+        background: white;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .cal-day.other-month {
+        background: #fafbfc;
+        color: var(--muted);
+    }
+
+    .cal-day.today {
+        border-color: var(--accent);
+        border-width: 2px;
+    }
+
+    .cal-daynum {
+        font-size: 11px;
+        color: var(--muted);
+    }
+
+    .cal-event {
+        font-size: 11px;
+        padding: 2px 5px;
+        border-radius: 4px;
+        background: var(--accent-light);
+        color: #2455c5;
+        cursor: pointer;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .cal-event:hover {
+        background: #dce6ff;
+    }
+
+    #calendarList {
+        max-width: 700px;
+    }
+
+    .cal-list-group {
+        margin-bottom: 18px;
+    }
+
+    .cal-list-groupdate {
+        font-weight: 700;
+        font-size: 13px;
+        margin-bottom: 6px;
+        color: var(--muted);
+    }
+
+    .cal-list-item {
+        padding: 10px 14px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: white;
+        margin-bottom: 6px;
+        cursor: pointer;
+    }
+
+    .cal-list-item:hover {
+        background: #f7f9fc;
+    }
+
+    .cal-list-item-title {
+        font-weight: 600;
+        font-size: 13px;
+    }
+
+    .cal-list-item-path {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 2px;
+    }
+
+    .cal-empty {
+        color: var(--muted);
+        font-size: 13px;
+        padding: 30px;
+        text-align: center;
     }
 
     #editorFooter {
@@ -328,6 +519,32 @@
 
         #editor {
             min-height: 220px;
+        }
+
+        #dateRow {
+            padding: 6px 14px;
+            flex-wrap: wrap;
+        }
+
+        #calendarView {
+            padding: 10px;
+        }
+
+        #calendarGrid {
+            gap: 3px;
+        }
+
+        .cal-day {
+            min-height: 56px;
+            padding: 3px;
+        }
+
+        .cal-event {
+            font-size: 9px;
+        }
+
+        .calendar-view-toggle {
+            margin-left: 0;
         }
     }
 
@@ -520,6 +737,16 @@
 
     </div>
 
+    <div
+        id="calendarNodeRow"
+        class="tree-row calendar-row"
+        data-id="__calendar__"
+        onclick="selectNode(CALENDAR_TREE_NODE)"
+    >
+        <span class="calendar-icon">📅</span>
+        <span>Calendar</span>
+    </div>
+
     <input
         id="treeSearch"
         type="search"
@@ -544,6 +771,13 @@
         <div id="saveStatus">Ready</div>
     </header>
 
+    <div id="dateRow">
+        <label for="entryDate">Date</label>
+        <input type="date" id="entryDate" disabled>
+        <span id="dateHint" class="date-hint"></span>
+        <button id="clearDateBtn" onclick="clearEntryDate()" style="display:none;">Clear date</button>
+    </div>
+
     <section id="editorArea">
 
         <div id="editorCard">
@@ -566,6 +800,24 @@
             </div>
 
         </div>
+
+    </section>
+
+    <section id="calendarView" style="display:none;">
+
+        <div class="calendar-toolbar">
+            <button onclick="calendarShiftMonth(-1)">‹ Prev</button>
+            <span id="calendarMonthLabel"></span>
+            <button onclick="calendarShiftMonth(1)">Next ›</button>
+            <button onclick="calendarGoToday()">Today</button>
+            <span class="calendar-view-toggle">
+                <button id="calMonthBtn" class="primary" onclick="setCalendarViewMode('month')">Month</button>
+                <button id="calListBtn" onclick="setCalendarViewMode('list')">List</button>
+            </span>
+        </div>
+
+        <div id="calendarGrid"></div>
+        <div id="calendarList" style="display:none;"></div>
 
     </section>
 
@@ -1527,9 +1779,24 @@ function saveEntry(id, text, options = {}) {
                     ? options.setRev
                     : (existing?.rev || 0) + 1;
 
+            /*
+               eventDate is optional (ISO "YYYY-MM-DD", or a
+               "YYYY-MM-DD/YYYY-MM-DD" range) and lives on the same
+               record as the text. Saving just the text (the common
+               autosave case) must not silently erase a previously
+               set date, so it carries forward from the existing
+               record unless this call explicitly changes it via
+               options.eventDate (including passing null to clear it).
+            */
+            const eventDate =
+                options.hasOwnProperty("eventDate")
+                    ? options.eventDate
+                    : (existing?.eventDate ?? null);
+
             store.put({
                 id: id,
                 text: text,
+                eventDate,
                 updatedAt:
                     options.updatedAt ||
                     new Date().toISOString(),
@@ -1542,6 +1809,20 @@ function saveEntry(id, text, options = {}) {
         transaction.oncomplete = resolve;
         transaction.onerror = () => reject(transaction.error);
     });
+}
+
+
+/*
+   Convenience wrapper for changing just the date on a section
+   without touching its text — used by the date picker in the
+   editor. Loads the current text first so saveEntry's normal path
+   (text + eventDate together) still applies cleanly.
+*/
+async function saveEntryDate(id, eventDate) {
+
+    const current = await loadEntryFull(id);
+
+    return saveEntry(id, current?.text || "", { eventDate });
 }
 
 
@@ -1691,6 +1972,23 @@ function slugify(text) {
 const TREE = normalizeTree(LIFE_TREE);
 
 
+/*
+   The Calendar is not a real content node — it has no text, no
+   storage record, and isn't part of LIFE_TREE. It's a fixed pseudo
+   node so it can be passed through the same selectNode() entry
+   point as everything else (keeping search, keyboard nav, etc.
+   working the same way) while being routed to its own renderer.
+*/
+const CALENDAR_NODE_ID = "__calendar__";
+
+const CALENDAR_TREE_NODE = {
+    id: CALENDAR_NODE_ID,
+    title: "Calendar",
+    path: ["Calendar"],
+    children: []
+};
+
+
 /* =========================================================
    TREE RENDERING
    ========================================================= */
@@ -1809,9 +2107,21 @@ function updateSelectedVisual() {
 
 async function selectNode(node) {
 
+    /*
+       The Calendar node isn't a normal writing section — it has no
+       text of its own, just an aggregated view of every dated
+       section. Route it to its own renderer instead of the usual
+       editor flow.
+    */
+    if (node.id === CALENDAR_NODE_ID) {
+        return selectCalendarNode(node);
+    }
+
     selectedId = node.id;
 
     updateSelectedVisual();
+
+    showEditorUI();
 
     document.getElementById("editorTitle")
         .textContent = node.title;
@@ -1829,21 +2139,31 @@ async function selectNode(node) {
     const editor =
         document.getElementById("editor");
 
+    const dateInput =
+        document.getElementById("entryDate");
+
     editor.disabled = false;
+    dateInput.disabled = false;
 
     editor.value = "";
+    dateInput.value = "";
 
     setSaveStatus("Loading…");
+    setDateHint("");
 
     try {
 
-        const text = await loadEntry(node.id);
+        const record = await loadEntryFull(node.id);
 
         if (selectedId === node.id) {
 
+            const text = record?.text || "";
+
             editor.value = text;
+            dateInput.value = toDateInputValue(record?.eventDate);
 
             updateCounts();
+            updateClearDateButton();
 
             setSaveStatus(
                 text ? "Saved" : "Not yet written"
@@ -1858,6 +2178,383 @@ async function selectNode(node) {
     }
 
     editor.focus();
+}
+
+
+/*
+   The stored eventDate can be a single "YYYY-MM-DD" or a range
+   "YYYY-MM-DD/YYYY-MM-DD". The <input type="date"> can only show
+   one date, so for a range it shows the start date — the full
+   range is still preserved in storage and shown in the hint text,
+   not lost just because the picker can only display one end of it.
+*/
+function toDateInputValue(eventDate) {
+
+    if (!eventDate) return "";
+
+    return eventDate.split("/")[0];
+}
+
+
+function setDateHint(text) {
+    document.getElementById("dateHint").textContent = text;
+}
+
+
+function updateClearDateButton() {
+
+    const hasDate = !!document.getElementById("entryDate").value;
+
+    document.getElementById("clearDateBtn").style.display =
+        hasDate ? "inline-block" : "none";
+}
+
+
+document.getElementById("entryDate")
+    .addEventListener("change", async event => {
+
+        if (!selectedId) return;
+
+        const newDate = event.target.value || null;
+
+        updateClearDateButton();
+
+        try {
+
+            await saveEntryDate(selectedId, newDate);
+            setDateHint(newDate ? "Date saved" : "");
+            refreshCalendarIfOpen();
+
+        } catch (error) {
+
+            console.error(error);
+            setDateHint("Could not save date");
+        }
+    });
+
+
+/* =========================================================
+   CALENDAR
+   =========================================================
+
+   The Calendar is a read view over dates already stored on tree
+   sections via the "Date" field in the editor — it has no data of
+   its own. Every event shown here is a real section; clicking one
+   jumps straight back into selectNode() for that section, so
+   editing a date and browsing the calendar are two views onto the
+   exact same underlying record, not a separate synced copy.
+   ========================================================= */
+
+let calendarViewMode = "month";  // "month" | "list"
+let calendarCursor = new Date(); // which month is currently shown
+
+
+function showEditorUI() {
+
+    document.getElementById("dateRow").style.display = "flex";
+    document.getElementById("editorArea").style.display = "block";
+    document.getElementById("calendarView").style.display = "none";
+}
+
+
+function showCalendarUI() {
+
+    document.getElementById("dateRow").style.display = "none";
+    document.getElementById("editorArea").style.display = "none";
+    document.getElementById("calendarView").style.display = "block";
+}
+
+
+async function selectCalendarNode(node) {
+
+    selectedId = CALENDAR_NODE_ID;
+
+    updateSelectedVisual();
+
+    document.getElementById("editorTitle").textContent = "Calendar";
+    document.getElementById("breadcrumb").textContent = "Every dated section, in one place";
+    setSaveStatus("");
+
+    showCalendarUI();
+
+    await renderCalendar();
+}
+
+
+/*
+   Pulls every stored entry with an eventDate set, and pairs each
+   one with its tree node (for title/path/prompt) so the calendar
+   never needs its own separate list of "events" to keep in sync —
+   the tree and IndexedDB are the only sources of truth.
+*/
+async function getDatedEntries() {
+
+    const records = await loadAllEntries();
+    const nodesById = new Map(
+        getAllNodes(TREE).map(n => [n.id, n])
+    );
+
+    return records
+        .filter(r => r.eventDate)
+        .map(r => {
+
+            const node = nodesById.get(r.id);
+            if (!node) return null; // orphaned record; skip defensively
+
+            const [startStr, endStr] = r.eventDate.split("/");
+
+            return {
+                id: r.id,
+                title: node.title,
+                path: node.path,
+                startDate: startStr,
+                endDate: endStr || startStr
+            };
+        })
+        .filter(Boolean);
+}
+
+
+async function renderCalendar() {
+
+    const entries = await getDatedEntries();
+
+    document.getElementById("calMonthBtn")
+        .classList.toggle("primary", calendarViewMode === "month");
+    document.getElementById("calListBtn")
+        .classList.toggle("primary", calendarViewMode === "list");
+
+    document.getElementById("calendarGrid").style.display =
+        calendarViewMode === "month" ? "grid" : "none";
+    document.getElementById("calendarList").style.display =
+        calendarViewMode === "list" ? "block" : "none";
+
+    if (calendarViewMode === "month") {
+        renderCalendarMonth(entries);
+    } else {
+        renderCalendarList(entries);
+    }
+}
+
+
+function setCalendarViewMode(mode) {
+
+    calendarViewMode = mode;
+    renderCalendar();
+}
+
+
+function calendarShiftMonth(delta) {
+
+    calendarCursor = new Date(
+        calendarCursor.getFullYear(),
+        calendarCursor.getMonth() + delta,
+        1
+    );
+
+    renderCalendar();
+}
+
+
+function calendarGoToday() {
+
+    calendarCursor = new Date();
+    renderCalendar();
+}
+
+
+/*
+   True if a "YYYY-MM-DD" date falls within [startDate, endDate]
+   inclusive, so multi-day ranges show on every day they cover,
+   not just their start date.
+*/
+function dateWithinEntry(dateStr, entry) {
+    return dateStr >= entry.startDate && dateStr <= entry.endDate;
+}
+
+
+function renderCalendarMonth(entries) {
+
+    const grid = document.getElementById("calendarGrid");
+    grid.innerHTML = "";
+
+    const year = calendarCursor.getFullYear();
+    const month = calendarCursor.getMonth();
+
+    document.getElementById("calendarMonthLabel").textContent =
+        calendarCursor.toLocaleDateString([], { month: "long", year: "numeric" });
+
+    ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach(label => {
+        const el = document.createElement("div");
+        el.className = "cal-daylabel";
+        el.textContent = label;
+        grid.appendChild(el);
+    });
+
+    const firstOfMonth = new Date(year, month, 1);
+    const startOffset = firstOfMonth.getDay(); // 0=Sun
+    const gridStart = new Date(year, month, 1 - startOffset);
+
+    const todayStr = toIsoDate(new Date());
+
+    for (let i = 0; i < 42; i++) {
+
+        const cellDate = new Date(
+            gridStart.getFullYear(),
+            gridStart.getMonth(),
+            gridStart.getDate() + i
+        );
+
+        const cellStr = toIsoDate(cellDate);
+        const isOtherMonth = cellDate.getMonth() !== month;
+
+        const cell = document.createElement("div");
+        cell.className = "cal-day" +
+            (isOtherMonth ? " other-month" : "") +
+            (cellStr === todayStr ? " today" : "");
+
+        const num = document.createElement("div");
+        num.className = "cal-daynum";
+        num.textContent = cellDate.getDate();
+        cell.appendChild(num);
+
+        entries
+            .filter(e => dateWithinEntry(cellStr, e))
+            .forEach(e => {
+
+                const chip = document.createElement("div");
+                chip.className = "cal-event";
+                chip.textContent = e.title;
+                chip.title = e.path.join(" › ");
+                chip.onclick = () => jumpToDatedEntry(e.id);
+                cell.appendChild(chip);
+            });
+
+        grid.appendChild(cell);
+    }
+}
+
+
+function renderCalendarList(entries) {
+
+    const container = document.getElementById("calendarList");
+    container.innerHTML = "";
+
+    if (!entries.length) {
+        container.innerHTML =
+            '<div class="cal-empty">No dated sections yet. Open any section, set a date, and it will appear here.</div>';
+        return;
+    }
+
+    const sorted = [...entries].sort((a, b) =>
+        a.startDate.localeCompare(b.startDate)
+    );
+
+    const groups = new Map();
+
+    sorted.forEach(e => {
+        if (!groups.has(e.startDate)) groups.set(e.startDate, []);
+        groups.get(e.startDate).push(e);
+    });
+
+    for (const [date, items] of groups) {
+
+        const groupEl = document.createElement("div");
+        groupEl.className = "cal-list-group";
+
+        const dateEl = document.createElement("div");
+        dateEl.className = "cal-list-groupdate";
+        dateEl.textContent = formatDisplayDate(date);
+        groupEl.appendChild(dateEl);
+
+        items.forEach(e => {
+
+            const item = document.createElement("div");
+            item.className = "cal-list-item";
+            item.onclick = () => jumpToDatedEntry(e.id);
+
+            const title = document.createElement("div");
+            title.className = "cal-list-item-title";
+            title.textContent =
+                e.startDate === e.endDate
+                    ? e.title
+                    : `${e.title} (${formatDisplayDate(e.startDate)} – ${formatDisplayDate(e.endDate)})`;
+
+            const path = document.createElement("div");
+            path.className = "cal-list-item-path";
+            path.textContent = e.path.join(" › ");
+
+            item.appendChild(title);
+            item.appendChild(path);
+            groupEl.appendChild(item);
+        });
+
+        container.appendChild(groupEl);
+    }
+}
+
+
+function formatDisplayDate(isoStr) {
+
+    const [y, m, d] = isoStr.split("-").map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString([], {
+        weekday: "short", month: "short", day: "numeric", year: "numeric"
+    });
+}
+
+
+function toIsoDate(date) {
+
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+}
+
+
+/*
+   Jumping from a calendar event back to its section is what makes
+   this genuinely two-way rather than a one-way summary: the same
+   selectNode() used by the tree opens the exact same record.
+*/
+function jumpToDatedEntry(nodeId) {
+
+    const node = getAllNodes(TREE).find(n => n.id === nodeId);
+    if (!node) return;
+
+    selectNode(node);
+
+    // Also expand and scroll to it in the tree, so the sidebar
+    // reflects where you just navigated to.
+    let current = node;
+    while (current.parentId) {
+        expanded.add(current.parentId);
+        current = getAllNodes(TREE).find(n => n.id === current.parentId);
+        if (!current) break;
+    }
+    renderTree();
+}
+
+
+/*
+   Re-renders the calendar only if it's currently the open view,
+   so saving a date while writing doesn't do unnecessary work, but
+   the calendar never shows stale data if the person flips back to
+   it after editing a date elsewhere.
+*/
+function refreshCalendarIfOpen() {
+
+    if (selectedId === CALENDAR_NODE_ID) {
+        renderCalendar();
+    }
+}
+
+
+function clearEntryDate() {
+
+    const dateInput = document.getElementById("entryDate");
+    dateInput.value = "";
+    dateInput.dispatchEvent(new Event("change"));
 }
 
 
