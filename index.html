@@ -540,6 +540,112 @@
         font-size: 11px;
     }
 
+    #voiceRow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 25px;
+        border-bottom: 1px solid var(--border);
+        background: #fafbfc;
+    }
+
+    #voiceBtn {
+        font-weight: 600;
+    }
+
+    #voiceBtn.recording {
+        background: #fee;
+        border-color: var(--danger);
+        color: var(--danger);
+        animation: pulse-record 1.4s infinite;
+    }
+
+    @keyframes pulse-record {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+    }
+
+    #voiceLang {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 4px 7px;
+        font-size: 12px;
+        font-family: inherit;
+    }
+
+    .voice-status {
+        font-size: 12px;
+        color: var(--muted);
+        font-style: italic;
+    }
+
+    #audioRecordingsList {
+        padding: 10px 25px;
+        border-top: 1px solid var(--border);
+        background: #fafbfc;
+    }
+
+    .audio-recordings-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        margin-bottom: 6px;
+    }
+
+    .audio-recording-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        margin-bottom: 6px;
+        font-size: 12px;
+    }
+
+    .audio-recording-item audio {
+        height: 30px;
+        flex: 1;
+        min-width: 150px;
+    }
+
+    .audio-recording-meta {
+        color: var(--muted);
+        white-space: nowrap;
+    }
+
+    .audio-sync-badge {
+        font-size: 10px;
+        padding: 2px 6px;
+        border-radius: 10px;
+        white-space: nowrap;
+    }
+
+    .audio-sync-badge.synced {
+        background: #e3f5e3;
+        color: #1a7f37;
+    }
+
+    .audio-sync-badge.pending {
+        background: #fff3d6;
+        color: #8a6a10;
+    }
+
+    .remove-audio-btn {
+        background: transparent;
+        border: none;
+        color: var(--muted);
+        cursor: pointer;
+        padding: 3px 6px;
+        border-radius: 10px;
+    }
+
+    .remove-audio-btn:hover {
+        background: #fee;
+        color: var(--danger);
+    }
+
     .empty-state {
         height: 100%;
         min-height: 500px;
@@ -626,6 +732,24 @@
 
         #savedEventsRow {
             padding: 6px 14px;
+        }
+
+        #voiceRow {
+            padding: 6px 14px;
+            flex-wrap: wrap;
+        }
+
+        #audioRecordingsList {
+            padding: 8px 14px;
+        }
+
+        .audio-recording-item {
+            flex-wrap: wrap;
+        }
+
+        .audio-recording-item audio {
+            width: 100%;
+            min-width: 0;
         }
 
         #calendarView {
@@ -893,6 +1017,17 @@
                 Your writing is automatically saved to this browser.
             </div>
 
+            <div id="voiceRow">
+                <button id="voiceBtn" onclick="toggleVoiceRecording()" disabled>🎙️ Record</button>
+                <select id="voiceLang">
+                    <option value="ta-IN">Tamil</option>
+                    <option value="en-IN">English (India)</option>
+                    <option value="en-US">English (US)</option>
+                    <option value="hi-IN">Hindi</option>
+                </select>
+                <span id="voiceStatus" class="voice-status"></span>
+            </div>
+
             <textarea
                 id="editor"
                 placeholder="Start writing here..."
@@ -904,6 +1039,8 @@
                 <span id="wordCount">0 words</span>
                 <span id="charCount">0 characters</span>
             </div>
+
+            <div id="audioRecordingsList" style="display:none;"></div>
 
         </div>
 
@@ -1801,9 +1938,10 @@ if (appTitleEl) appTitleEl.textContent = `My Life History_${APP_VERSION}`;
 
 
 const DB_NAME = "MyLifeHistoryDB";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE = "entries";
 const META_STORE = "meta";
+const AUDIO_STORE = "audio";
 
 let db = null;
 let selectedId = null;
@@ -1842,6 +1980,24 @@ function openDatabase() {
                 database.createObjectStore(META_STORE, {
                     keyPath: "key"
                 });
+            }
+
+            /*
+               AUDIO_STORE holds voice recordings as Blobs, one row per
+               recording (a section can have several). Kept in its own
+               store rather than inside STORE's text records because
+               audio is much larger than text and shouldn't be read
+               into memory every time a section's text is loaded, or
+               bloat every Drive text-sync with binary data it doesn't
+               need. The "bySection" index lets the editor quickly list
+               every recording that belongs to the currently open
+               section without scanning the whole store.
+            */
+            if (!database.objectStoreNames.contains(AUDIO_STORE)) {
+                const audioStore = database.createObjectStore(AUDIO_STORE, {
+                    keyPath: "id"
+                });
+                audioStore.createIndex("bySection", "sectionId", { unique: false });
             }
         };
 
@@ -1992,6 +2148,522 @@ async function removeEntryEvent(id, index) {
     events.splice(index, 1);
 
     return saveEntry(id, current?.text || "", { events });
+}
+
+
+/* =========================================================
+   AUDIO STORE (voice recordings)
+   =========================================================
+
+   Each recording is its own row: { id, sectionId, blob, mimeType,
+   durationSeconds, createdAt, transcribedText, syncedAt }. A
+   section can have any number of recordings; nothing here ever
+   overwrites a previous one — a new recording is always added
+   alongside existing ones, matching "keep every recording as its
+   own file" rather than replacing.
+
+   syncedAt (null until a successful Drive upload) is how the sync
+   logic knows which recordings still need uploading, without
+   re-uploading every recording on every sync.
+   ========================================================= */
+
+function generateAudioId() {
+    return "audio_" + Date.now() + "_" + Math.random().toString(36).slice(2, 9);
+}
+
+
+function saveAudioRecording(sectionId, blob, mimeType, durationSeconds, transcribedText) {
+
+    if (!db) return Promise.reject(new Error("Database unavailable"));
+
+    return new Promise((resolve, reject) => {
+
+        const record = {
+            id: generateAudioId(),
+            sectionId,
+            blob,
+            mimeType,
+            durationSeconds,
+            transcribedText: transcribedText || "",
+            createdAt: new Date().toISOString(),
+            syncedAt: null
+        };
+
+        const transaction = db.transaction(AUDIO_STORE, "readwrite");
+        transaction.objectStore(AUDIO_STORE).put(record);
+
+        transaction.oncomplete = () => resolve(record);
+        transaction.onerror = () => reject(transaction.error);
+    });
+}
+
+
+function loadAudioForSection(sectionId) {
+
+    return new Promise((resolve, reject) => {
+
+        const transaction = db.transaction(AUDIO_STORE, "readonly");
+        const index = transaction.objectStore(AUDIO_STORE).index("bySection");
+        const request = index.getAll(sectionId);
+
+        request.onsuccess = () => {
+            const results = request.result || [];
+            results.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+            resolve(results);
+        };
+
+        request.onerror = () => reject(request.error);
+    });
+}
+
+
+function deleteAudioRecording(audioId) {
+
+    return new Promise((resolve, reject) => {
+
+        const transaction = db.transaction(AUDIO_STORE, "readwrite");
+        transaction.objectStore(AUDIO_STORE).delete(audioId);
+
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+    });
+}
+
+
+function markAudioSynced(audioId) {
+
+    return new Promise((resolve, reject) => {
+
+        const transaction = db.transaction(AUDIO_STORE, "readwrite");
+        const store = transaction.objectStore(AUDIO_STORE);
+        const getReq = store.get(audioId);
+
+        getReq.onsuccess = () => {
+            const record = getReq.result;
+            if (record) {
+                record.syncedAt = new Date().toISOString();
+                store.put(record);
+            }
+        };
+
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+    });
+}
+
+
+function loadAllUnsyncedAudio() {
+
+    return new Promise((resolve, reject) => {
+
+        const transaction = db.transaction(AUDIO_STORE, "readonly");
+        const request = transaction.objectStore(AUDIO_STORE).getAll();
+
+        request.onsuccess = () => {
+            const all = request.result || [];
+            resolve(all.filter(r => !r.syncedAt));
+        };
+
+        request.onerror = () => reject(request.error);
+    });
+}
+
+
+/*
+   Returns a Set of every recording id already stored locally, used
+   by downloadAudioRecordings to skip recordings already present
+   rather than re-downloading and duplicating them on every sync.
+*/
+function loadAllAudioRecordingIds() {
+
+    return new Promise((resolve, reject) => {
+
+        const transaction = db.transaction(AUDIO_STORE, "readonly");
+        const request = transaction.objectStore(AUDIO_STORE).getAll();
+
+        request.onsuccess = () => {
+            const all = request.result || [];
+            resolve(new Set(all.map(r => r.id)));
+        };
+
+        request.onerror = () => reject(request.error);
+    });
+}
+
+
+/*
+   Saves a recording pulled down from Drive, using the SAME id it
+   was uploaded under (rather than generating a new one), so running
+   this again never creates a duplicate, and reconstructs it as a
+   fully synced record (syncedAt set immediately) since it just
+   came from Drive and doesn't need uploading back.
+*/
+function saveDownloadedAudioRecording(id, blob, metadata) {
+
+    if (!db) return Promise.reject(new Error("Database unavailable"));
+
+    return new Promise((resolve, reject) => {
+
+        const record = {
+            id,
+            sectionId: metadata.sectionId,
+            blob,
+            mimeType: metadata.mimeType || blob.type || "audio/webm",
+            durationSeconds: metadata.durationSeconds || 0,
+            transcribedText: metadata.transcribedText || "",
+            createdAt: metadata.createdAt || new Date().toISOString(),
+            syncedAt: new Date().toISOString()
+        };
+
+        const transaction = db.transaction(AUDIO_STORE, "readwrite");
+        transaction.objectStore(AUDIO_STORE).put(record);
+
+        transaction.oncomplete = () => resolve(record);
+        transaction.onerror = () => reject(transaction.error);
+    });
+}
+
+
+/* =========================================================
+   VOICE INPUT
+   =========================================================
+
+   Two browser APIs work together here, doing two different jobs:
+
+   - SpeechRecognition (webkitSpeechRecognition in Chrome) turns
+     speech into text live, in the selected language (Tamil by
+     default). This is what actually appears in the editor as you
+     talk. It requires an internet connection — Chrome sends audio
+     to Google's speech service to recognize it — and its language
+     support varies by browser; Chrome has the widest coverage.
+
+   - MediaRecorder independently captures the raw microphone audio
+     into a Blob, saved permanently alongside the transcription
+     (per the earlier decision to keep every recording). This part
+     works fully offline and doesn't depend on the transcription
+     succeeding — if recognition fails or the person is offline,
+     the audio is still captured; only the auto-typed text is
+     unavailable in that case, and the person can always type or
+     re-record afterward.
+
+   Both start and stop together from the same button, but their
+   results are saved independently: transcribed text goes straight
+   into the editor's normal autosave path, while the audio Blob is
+   saved as its own row in AUDIO_STORE once recording stops.
+*/
+
+let isRecording = false;
+let speechRecognizer = null;
+let mediaRecorder = null;
+let mediaStream = null;
+let recordedChunks = [];
+let recordingStartTime = null;
+let transcriptSoFar = "";
+
+
+function isSpeechSupported() {
+    return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+}
+
+
+function isRecordingSupported() {
+    return !!(navigator.mediaDevices && window.MediaRecorder);
+}
+
+
+function setVoiceStatus(text) {
+    document.getElementById("voiceStatus").textContent = text;
+}
+
+
+async function toggleVoiceRecording() {
+
+    if (isRecording) {
+        stopVoiceRecording();
+    } else {
+        await startVoiceRecording();
+    }
+}
+
+
+async function startVoiceRecording() {
+
+    if (!selectedId) return;
+
+    if (!isSpeechSupported() && !isRecordingSupported()) {
+        setVoiceStatus("Voice input isn't supported in this browser. Try Chrome.");
+        return;
+    }
+
+    const lang = document.getElementById("voiceLang").value;
+    const editor = document.getElementById("editor");
+
+    // Text already in the editor before recording starts is kept;
+    // new speech is appended after it, not overwriting anything
+    // already written or dictated earlier.
+    transcriptSoFar = editor.value;
+    recordedChunks = [];
+    recordingStartTime = Date.now();
+
+    try {
+
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    } catch (error) {
+
+        console.error(error);
+        setVoiceStatus("Microphone permission was denied or unavailable.");
+        return;
+    }
+
+    // Start audio capture (works regardless of speech recognition
+    // availability, so the person always gets a saved recording).
+    if (isRecordingSupported()) {
+
+        try {
+
+            mediaRecorder = new MediaRecorder(mediaStream);
+
+            mediaRecorder.ondataavailable = event => {
+                if (event.data && event.data.size > 0) {
+                    recordedChunks.push(event.data);
+                }
+            };
+
+            mediaRecorder.start();
+
+        } catch (error) {
+            console.error(error);
+            // Recording failed to start, but speech recognition can
+            // still proceed below — the person just won't get an
+            // audio file for this attempt.
+        }
+    }
+
+    // Start live speech-to-text, if the browser supports it.
+    if (isSpeechSupported()) {
+
+        const SpeechRecognitionImpl =
+            window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        speechRecognizer = new SpeechRecognitionImpl();
+        speechRecognizer.lang = lang;
+        speechRecognizer.continuous = true;
+        speechRecognizer.interimResults = true;
+
+        speechRecognizer.onresult = event => {
+
+            let finalText = "";
+            let interimText = "";
+
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+
+                const transcript = event.results[i][0].transcript;
+
+                if (event.results[i].isFinal) {
+                    finalText += transcript;
+                } else {
+                    interimText += transcript;
+                }
+            }
+
+            if (finalText) {
+                transcriptSoFar =
+                    (transcriptSoFar ? transcriptSoFar.trimEnd() + " " : "") +
+                    finalText.trim();
+            }
+
+            editor.value =
+                transcriptSoFar +
+                (interimText ? " " + interimText : "");
+
+            updateCounts();
+        };
+
+        speechRecognizer.onerror = event => {
+            console.error("Speech recognition error:", event.error);
+            setVoiceStatus(
+                event.error === "not-allowed"
+                    ? "Microphone permission was denied."
+                    : `Speech recognition error: ${event.error}. Recording audio will continue.`
+            );
+        };
+
+        speechRecognizer.onend = () => {
+            // Chrome sometimes ends recognition on its own after a
+            // pause even while still "recording" the mic; restart
+            // it automatically so a long dictation isn't cut short.
+            if (isRecording) {
+                try { speechRecognizer.start(); } catch (e) {}
+            }
+        };
+
+        try {
+            speechRecognizer.start();
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    isRecording = true;
+
+    const btn = document.getElementById("voiceBtn");
+    btn.textContent = "⏹️ Stop";
+    btn.classList.add("recording");
+
+    setVoiceStatus(
+        isSpeechSupported()
+            ? "Listening… speak now."
+            : "Recording audio (live transcription not supported in this browser)."
+    );
+}
+
+
+async function stopVoiceRecording() {
+
+    isRecording = false;
+
+    const btn = document.getElementById("voiceBtn");
+    btn.textContent = "🎙️ Record";
+    btn.classList.remove("recording");
+
+    if (speechRecognizer) {
+        try { speechRecognizer.stop(); } catch (e) {}
+        speechRecognizer = null;
+    }
+
+    const durationSeconds =
+        recordingStartTime
+            ? Math.round((Date.now() - recordingStartTime) / 1000)
+            : 0;
+
+    if (mediaRecorder && mediaRecorder.state !== "inactive") {
+
+        await new Promise(resolve => {
+
+            mediaRecorder.onstop = resolve;
+            mediaRecorder.stop();
+        });
+    }
+
+    if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+    }
+
+    setVoiceStatus("Saving recording…");
+
+    try {
+
+        if (recordedChunks.length && selectedId) {
+
+            const mimeType = mediaRecorder?.mimeType || "audio/webm";
+            const blob = new Blob(recordedChunks, { type: mimeType });
+
+            await saveAudioRecording(
+                selectedId,
+                blob,
+                mimeType,
+                durationSeconds,
+                document.getElementById("editor").value
+            );
+
+            renderAudioRecordings(await loadAudioForSection(selectedId));
+            setVoiceStatus("Recording saved.");
+
+        } else {
+            setVoiceStatus("");
+        }
+
+    } catch (error) {
+
+        console.error(error);
+        setVoiceStatus("Could not save the recording.");
+    }
+
+    recordedChunks = [];
+    mediaRecorder = null;
+
+    // The dictated text is regular editor content at this point;
+    // let the normal autosave path pick it up rather than writing
+    // to storage separately here.
+    autosave();
+}
+
+
+function formatAudioDuration(seconds) {
+
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+
+function renderAudioRecordings(recordings) {
+
+    const container = document.getElementById("audioRecordingsList");
+
+    if (!recordings.length) {
+        container.style.display = "none";
+        container.innerHTML = "";
+        return;
+    }
+
+    container.style.display = "block";
+    container.innerHTML = "";
+
+    const label = document.createElement("div");
+    label.className = "audio-recordings-label";
+    label.textContent =
+        recordings.length === 1
+            ? "1 voice recording for this section:"
+            : `${recordings.length} voice recordings for this section:`;
+    container.appendChild(label);
+
+    recordings.forEach(rec => {
+
+        const item = document.createElement("div");
+        item.className = "audio-recording-item";
+
+        const audioEl = document.createElement("audio");
+        audioEl.controls = true;
+        audioEl.src = URL.createObjectURL(rec.blob);
+        item.appendChild(audioEl);
+
+        const meta = document.createElement("span");
+        meta.className = "audio-recording-meta";
+        meta.textContent =
+            `${formatAudioDuration(rec.durationSeconds)} · ` +
+            new Date(rec.createdAt).toLocaleDateString([], {
+                month: "short", day: "numeric", year: "numeric"
+            });
+        item.appendChild(meta);
+
+        const badge = document.createElement("span");
+        badge.className = "audio-sync-badge " + (rec.syncedAt ? "synced" : "pending");
+        badge.textContent = rec.syncedAt ? "Backed up" : "Not backed up yet";
+        item.appendChild(badge);
+
+        const removeBtn = document.createElement("button");
+        removeBtn.className = "remove-audio-btn";
+        removeBtn.textContent = "✕";
+        removeBtn.title = "Delete this recording";
+        removeBtn.onclick = async () => {
+
+            const confirmed = confirm(
+                "Delete this recording? This only removes the audio file; " +
+                "any text you dictated stays in your writing."
+            );
+
+            if (!confirmed) return;
+
+            await deleteAudioRecording(rec.id);
+            renderAudioRecordings(await loadAudioForSection(selectedId));
+        };
+        item.appendChild(removeBtn);
+
+        container.appendChild(item);
+    });
 }
 
 
@@ -2317,6 +2989,14 @@ async function selectNode(node) {
     editor.value = "";
     dateInput.value = "";
 
+    // Switching sections while recording would attach the audio to
+    // the wrong section, so stop any in-progress recording first.
+    if (isRecording) {
+        stopVoiceRecording();
+    }
+
+    document.getElementById("voiceBtn").disabled = !isSpeechSupported();
+
     // Switching sections: hide any leftover suggestion bar from the
     // previous section immediately, rather than showing stale chips
     // for a moment while the new text loads.
@@ -2324,6 +3004,8 @@ async function selectNode(node) {
     document.getElementById("dateSuggestBar").innerHTML = "";
     document.getElementById("savedEventsRow").style.display = "none";
     document.getElementById("savedEventsRow").innerHTML = "";
+    document.getElementById("audioRecordingsList").style.display = "none";
+    document.getElementById("audioRecordingsList").innerHTML = "";
 
     setSaveStatus("Loading…");
     setDateHint("");
@@ -2351,6 +3033,8 @@ async function selectNode(node) {
             // so previously written entries (not just newly typed
             // ones) still get their dates offered.
             scanEditorForDates();
+
+            renderAudioRecordings(await loadAudioForSection(node.id));
         }
 
     } catch (error) {
@@ -3649,6 +4333,140 @@ const Crypto = (() => {
         return JSON.parse(dec.decode(plaintextBytes));
     }
 
+
+    /*
+       Blob-safe variants for audio recordings. Text envelopes
+       (encryptObject above) base64-encode everything, which is
+       fine for small JSON but is unsafe for audio-sized data: the
+       base64 encoder here uses String.fromCharCode.apply, which
+       can overflow the call stack on inputs of more than a few MB,
+       and base64 itself adds ~33% overhead for no benefit on
+       already-binary data. Instead, the salt and IV are stored as
+       a small unencrypted header (they aren't secret — only the
+       passphrase is), and the audio's own metadata (which section
+       it belongs to, its duration, the dictated text) travels
+       INSIDE the encrypted portion, length-prefixed ahead of the
+       raw audio bytes. That metadata has to be recoverable on
+       another device purely from the Drive file, since Drive
+       filenames alone can't safely carry a tree node id (some
+       node ids could contain characters that aren't safe in a
+       filename) or the dictated text.
+
+       Wire layout of the final Blob:
+         [16 bytes salt][12 bytes iv]
+         [4 bytes: big-endian length of encrypted metadata+audio]
+         [ciphertext: encrypted JSON-metadata-length (4 bytes) +
+                      JSON metadata bytes + raw audio bytes]
+    */
+    async function encryptAudioPackage(blob, passphrase, metadata) {
+
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const key = await deriveKey(passphrase, salt);
+
+        const metadataBytes = new TextEncoder().encode(JSON.stringify(metadata));
+        const audioBytes = new Uint8Array(await blob.arrayBuffer());
+
+        const metaLengthHeader = new Uint8Array(4);
+        new DataView(metaLengthHeader.buffer).setUint32(0, metadataBytes.length, false);
+
+        const plaintext = new Uint8Array(
+            metaLengthHeader.length + metadataBytes.length + audioBytes.length
+        );
+        plaintext.set(metaLengthHeader, 0);
+        plaintext.set(metadataBytes, metaLengthHeader.length);
+        plaintext.set(audioBytes, metaLengthHeader.length + metadataBytes.length);
+
+        const ciphertext = await crypto.subtle.encrypt(
+            { name: "AES-GCM", iv },
+            key,
+            plaintext
+        );
+
+        return new Blob([salt, iv, ciphertext], { type: "application/octet-stream" });
+    }
+
+
+    async function decryptAudioPackage(encryptedBlob, passphrase) {
+
+        const buffer = await encryptedBlob.arrayBuffer();
+
+        const salt = new Uint8Array(buffer.slice(0, 16));
+        const iv = new Uint8Array(buffer.slice(16, 28));
+        const ciphertext = buffer.slice(28);
+
+        const key = await deriveKey(passphrase, salt);
+
+        let plaintextBytes;
+
+        try {
+            plaintextBytes = new Uint8Array(await crypto.subtle.decrypt(
+                { name: "AES-GCM", iv },
+                key,
+                ciphertext
+            ));
+        } catch (e) {
+            throw new Error("Wrong passphrase, or the recording is corrupted.");
+        }
+
+        const metaLength = new DataView(plaintextBytes.buffer, 0, 4).getUint32(0, false);
+        const metadataBytes = plaintextBytes.slice(4, 4 + metaLength);
+        const audioBytes = plaintextBytes.slice(4 + metaLength);
+
+        const metadata = JSON.parse(new TextDecoder().decode(metadataBytes));
+        const blob = new Blob([audioBytes], { type: metadata.mimeType || "audio/webm" });
+
+        return { metadata, blob };
+    }
+
+    /*
+       Backwards-compatible for direct blob-only Drive/IndexedDB use;
+       kept public in case any other future caller wants plain blob
+       encryption without the metadata envelope.
+    */
+    async function encryptBlob(blob, passphrase) {
+
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const key = await deriveKey(passphrase, salt);
+
+        const plaintext = await blob.arrayBuffer();
+
+        const ciphertext = await crypto.subtle.encrypt(
+            { name: "AES-GCM", iv },
+            key,
+            plaintext
+        );
+
+        return new Blob([salt, iv, ciphertext], { type: "application/octet-stream" });
+    }
+
+
+    async function decryptBlob(encryptedBlob, passphrase, resultMimeType) {
+
+        const buffer = await encryptedBlob.arrayBuffer();
+
+        const salt = new Uint8Array(buffer.slice(0, 16));
+        const iv = new Uint8Array(buffer.slice(16, 28));
+        const ciphertext = buffer.slice(28);
+
+        const key = await deriveKey(passphrase, salt);
+
+        let plaintextBytes;
+
+        try {
+            plaintextBytes = await crypto.subtle.decrypt(
+                { name: "AES-GCM", iv },
+                key,
+                ciphertext
+            );
+        } catch (e) {
+            throw new Error("Wrong passphrase, or the recording is corrupted.");
+        }
+
+        return new Blob([plaintextBytes], { type: resultMimeType || "application/octet-stream" });
+    }
+
     /*
        Ensures we have a passphrase in memory for this session,
        prompting once per device (per the "remember locally" choice)
@@ -3718,6 +4536,10 @@ const Crypto = (() => {
     return {
         encryptObject,
         decryptObject,
+        encryptBlob,
+        decryptBlob,
+        encryptAudioPackage,
+        decryptAudioPackage,
         ensurePassphrase,
         forgetSavedPassphrase,
         getSavedPassphrase
@@ -4013,6 +4835,8 @@ const DriveSync = (() => {
             await setMeta("syncRev", bumpedRev);
             await setMeta("lastSyncedAt", new Date().toISOString());
 
+            await uploadAudioRecordings();
+
             setStatus("uploaded just now", "ok");
 
         } catch (error) {
@@ -4020,6 +4844,107 @@ const DriveSync = (() => {
             console.error(error);
             setStatus("upload failed — " + error.message, "err");
         }
+    }
+
+
+    /*
+       Uploads every voice recording not yet backed up, each as its
+       own encrypted file in appDataFolder (named by the recording's
+       own id, so re-running this never creates duplicates). Kept
+       separate from uploadBackup/uploadToDrive's text sync so a
+       sync with no new recordings doesn't re-check or re-upload
+       audio unnecessarily, and one large recording failing to
+       upload doesn't block the (much smaller, more important) text
+       backup from succeeding.
+    */
+    async function uploadAudioRecordings() {
+
+        const pending = await loadAllUnsyncedAudio();
+
+        if (!pending.length) return;
+
+        const passphrase = await Crypto.ensurePassphrase("join");
+
+        for (const recording of pending) {
+
+            try {
+
+                const encryptedBlob = await Crypto.encryptAudioPackage(
+                    recording.blob,
+                    passphrase,
+                    {
+                        sectionId: recording.sectionId,
+                        mimeType: recording.mimeType,
+                        durationSeconds: recording.durationSeconds,
+                        transcribedText: recording.transcribedText,
+                        createdAt: recording.createdAt
+                    }
+                );
+
+                const driveFileName = `lifehistory-audio-${recording.id}.enc`;
+
+                const { body, boundary } = await buildAudioMultipartBody(driveFileName, encryptedBlob);
+
+                const res = await fetch(
+                    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+                    {
+                        method: "POST",
+                        headers: {
+                            ...authHeaders(),
+                            "Content-Type": `multipart/related; boundary=${boundary}`
+                        },
+                        body
+                    }
+                );
+
+                if (!res.ok) {
+                    throw new Error("Audio upload failed: " + res.status);
+                }
+
+                await markAudioSynced(recording.id);
+
+            } catch (error) {
+
+                // One failed recording shouldn't stop the rest from
+                // uploading; log it and continue, so a single bad
+                // network blip doesn't leave every later recording
+                // stuck as "not backed up" too.
+                console.error("Failed to upload recording", recording.id, error);
+            }
+        }
+    }
+
+
+    /*
+       Builds a multipart/related body for an audio upload, matching
+       the same wire format Google Drive's uploadType=multipart
+       expects (this is NOT multipart/form-data — FormData produces
+       the wrong content type for this endpoint). Assembled as a
+       Blob rather than a string, since audio bytes can't safely be
+       concatenated into a JS string the way uploadBackup's JSON
+       body is.
+    */
+    async function buildAudioMultipartBody(fileName, encryptedBlob) {
+
+        const metadata = {
+            name: fileName,
+            parents: ["appDataFolder"]
+        };
+
+        const boundary = "lifehistoryaudio_" + Date.now();
+
+        const head =
+            `--${boundary}\r\n` +
+            "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
+            JSON.stringify(metadata) + "\r\n" +
+            `--${boundary}\r\n` +
+            "Content-Type: application/octet-stream\r\n\r\n";
+
+        const tail = `\r\n--${boundary}--`;
+
+        const body = new Blob([head, encryptedBlob, tail]);
+
+        return { body, boundary };
     }
 
     /*
@@ -4093,11 +5018,86 @@ const DriveSync = (() => {
                 updateCounts();
             }
 
+            await downloadAudioRecordings();
+
             setStatus("downloaded just now", "ok");
 
         } catch (error) {
 
             reportDriveError("download failed", error);
+        }
+    }
+
+
+    /*
+       Pulls down any audio recording that exists on Drive but not
+       yet in this device's IndexedDB — the counterpart to
+       uploadAudioRecordings, making audio genuinely two-way across
+       devices rather than a one-way trip to Drive. Recordings
+       already present locally (matched by the id embedded in the
+       Drive filename) are skipped, so this is safe to call on
+       every download/sync without re-fetching everything each time.
+    */
+    async function downloadAudioRecordings() {
+
+        const passphrase = await Crypto.ensurePassphrase("join");
+
+        const listUrl =
+            "https://www.googleapis.com/drive/v3/files" +
+            "?spaces=appDataFolder" +
+            "&fields=files(id,name)" +
+            "&q=" + encodeURIComponent("name contains 'lifehistory-audio-'");
+
+        const listRes = await fetch(listUrl, { headers: authHeaders() });
+
+        if (!listRes.ok) {
+            throw new Error("Drive audio lookup failed: " + listRes.status);
+        }
+
+        const listData = await listRes.json();
+        const driveFiles = listData.files || [];
+
+        if (!driveFiles.length) return;
+
+        const localRecordings = await loadAllAudioRecordingIds();
+
+        for (const driveFile of driveFiles) {
+
+            // Filenames look like "lifehistory-audio-<id>.enc"; pull
+            // the id back out to check against what's already local
+            // and to recover which section the recording belongs to.
+            const match = driveFile.name.match(/^lifehistory-audio-(audio_\d+_[a-z0-9]+)\.enc$/);
+            if (!match) continue;
+
+            const recordingId = match[1];
+            if (localRecordings.has(recordingId)) continue;
+
+            try {
+
+                const fileRes = await fetch(
+                    `https://www.googleapis.com/drive/v3/files/${driveFile.id}?alt=media`,
+                    { headers: authHeaders() }
+                );
+
+                if (!fileRes.ok) {
+                    throw new Error("Audio download failed: " + fileRes.status);
+                }
+
+                const encryptedBlob = await fileRes.blob();
+                const { metadata, blob } = await Crypto.decryptAudioPackage(encryptedBlob, passphrase);
+
+                await saveDownloadedAudioRecording(recordingId, blob, metadata);
+
+            } catch (error) {
+
+                // Same principle as upload: one bad recording
+                // shouldn't stop the rest of the download.
+                console.error("Failed to download recording", recordingId, error);
+            }
+        }
+
+        if (selectedId && selectedId !== CALENDAR_NODE_ID) {
+            renderAudioRecordings(await loadAudioForSection(selectedId));
         }
     }
 
@@ -4128,6 +5128,14 @@ const DriveSync = (() => {
             const localBackup = await buildLocalBackup();
             const localHasChanges = localBackup.syncRev !== lastSyncedRev;
 
+            // Audio is independent of which way the text sync goes —
+            // a device can be fully caught up on text but still be
+            // missing a recording made on another device, so this
+            // always runs rather than being tied to one branch below.
+            if (file) {
+                await downloadAudioRecordings();
+            }
+
             if (!file) {
                 // Nothing on Drive yet: first sync just pushes up.
                 await uploadToDrive();
@@ -4147,6 +5155,7 @@ const DriveSync = (() => {
             if (!localHasChanges) {
                 // We have nothing new locally; safe to just pull.
                 await applyRemote(driveBackup);
+                await uploadAudioRecordings();
                 setStatus("synced — pulled latest from Drive", "ok");
                 return;
             }
@@ -4158,8 +5167,10 @@ const DriveSync = (() => {
                 await uploadToDrive();
             } else if (choice === "keepDrive") {
                 await applyRemote(driveBackup);
+                await uploadAudioRecordings();
             } else if (choice === "merge") {
                 await mergeAndUpload(localBackup, driveBackup);
+                await uploadAudioRecordings();
             }
 
             setStatus("synced (conflict resolved: " + choice + ")", "ok");
