@@ -632,6 +632,20 @@
         color: #8a6a10;
     }
 
+    .transcribe-audio-btn {
+        font-size: 11px;
+        padding: 4px 9px;
+        border-radius: 14px;
+        white-space: nowrap;
+    }
+
+    .transcribe-audio-btn.transcribing {
+        background: #fee;
+        border-color: var(--danger);
+        color: var(--danger);
+        animation: pulse-record 1.4s infinite;
+    }
+
     .remove-audio-btn {
         background: transparent;
         border: none;
@@ -2360,6 +2374,15 @@ let recordedChunks = [];
 let recordingStartTime = null;
 let transcriptSoFar = "";
 
+/*
+   Holds the stop function for an in-progress transcribeRecording()
+   call, if any, so switching sections can cancel it cleanly rather
+   than leaving a recognizer running that would insert text into
+   whatever section is opened next. null when no transcription is
+   active.
+*/
+let activeTranscriptionStopper = null;
+
 
 function isSpeechSupported() {
     return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -2386,6 +2409,9 @@ async function toggleVoiceRecording() {
 }
 
 
+let recordingSectionId = null;
+
+
 async function startVoiceRecording() {
 
     if (!selectedId) return;
@@ -2397,6 +2423,13 @@ async function startVoiceRecording() {
 
     const lang = document.getElementById("voiceLang").value;
     const editor = document.getElementById("editor");
+
+    // Captured now, at the moment recording starts, rather than
+    // read from the mutable selectedId later when the recording is
+    // saved — selectedId can change if the person switches sections
+    // while recording, and the audio must stay attached to the
+    // section it was actually recorded for.
+    recordingSectionId = selectedId;
 
     // Text already in the editor before recording starts is kept;
     // new speech is appended after it, not overwriting anything
@@ -2481,11 +2514,21 @@ async function startVoiceRecording() {
         };
 
         speechRecognizer.onerror = event => {
+
             console.error("Speech recognition error:", event.error);
+
+            // "no-speech" fires often and harmlessly (e.g. a brief
+            // pause) since onend restarts recognition automatically;
+            // surfacing it as an alarming error would be noise. Real
+            // problems (denied mic, network failure) get a clear,
+            // sticky status instead of a message that might be
+            // missed or silently overwritten by the next status change.
+            if (event.error === "no-speech") return;
+
             setVoiceStatus(
                 event.error === "not-allowed"
                     ? "Microphone permission was denied."
-                    : `Speech recognition error: ${event.error}. Recording audio will continue.`
+                    : `Speech recognition error: ${event.error}. Recording audio will continue, but live transcription stopped working.`
             );
         };
 
@@ -2527,8 +2570,47 @@ async function stopVoiceRecording() {
     btn.textContent = "🎙️ Record";
     btn.classList.remove("recording");
 
+    /*
+       speechRecognizer.stop() is asynchronous: Chrome keeps
+       processing whatever audio it already has and can still fire
+       onresult with the final words spoken — including the tail
+       end of a sentence said right before Stop was pressed — AFTER
+       stop() returns, only fully finishing when onend fires. If we
+       null out the recognizer immediately instead of waiting for
+       that, the last few words can arrive on a reference we've
+       already discarded and never make it into the editor. Waiting
+       for the real onend here (with a timeout as a safety net, in
+       case a particular browser never fires it) is what fixes that.
+    */
     if (speechRecognizer) {
-        try { speechRecognizer.stop(); } catch (e) {}
+
+        const recognizerToStop = speechRecognizer;
+
+        await new Promise(resolve => {
+
+            let settled = false;
+
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                resolve();
+            };
+
+            recognizerToStop.onend = finish;
+            recognizerToStop.onerror = finish;
+
+            // Safety net: some browsers can be slow or inconsistent
+            // firing onend, and we must not hang the Stop button
+            // forever waiting for it.
+            setTimeout(finish, 1500);
+
+            try {
+                recognizerToStop.stop();
+            } catch (e) {
+                finish();
+            }
+        });
+
         speechRecognizer = null;
     }
 
@@ -2555,20 +2637,29 @@ async function stopVoiceRecording() {
 
     try {
 
-        if (recordedChunks.length && selectedId) {
+        if (recordedChunks.length && recordingSectionId) {
 
             const mimeType = mediaRecorder?.mimeType || "audio/webm";
             const blob = new Blob(recordedChunks, { type: mimeType });
 
             await saveAudioRecording(
-                selectedId,
+                recordingSectionId,
                 blob,
                 mimeType,
                 durationSeconds,
-                document.getElementById("editor").value
+                transcriptSoFar
             );
 
-            renderAudioRecordings(await loadAudioForSection(selectedId));
+            // Only refresh the visible recordings list if the person
+            // is still looking at the section this recording belongs
+            // to — if they've already switched away, selectNode's own
+            // load of the new section already rendered the right list,
+            // and re-rendering here would show the old section's audio
+            // under the new section's heading.
+            if (selectedId === recordingSectionId) {
+                renderAudioRecordings(await loadAudioForSection(recordingSectionId));
+            }
+
             setVoiceStatus("Recording saved.");
 
         } else {
@@ -2597,6 +2688,183 @@ function formatAudioDuration(seconds) {
     const s = seconds % 60;
     return `${m}:${String(s).padStart(2, "0")}`;
 }
+
+
+/*
+   Transcribes an already-saved recording by playing it back through
+   the speakers while SpeechRecognition listens via the microphone
+   at the same time. The Web Speech API only accepts live microphone
+   input, not a pre-recorded file, so this "play it and listen" loop
+   is the only way to reuse it for a saved recording without a paid
+   cloud transcription service. Needs the speaker volume up and a
+   reasonably quiet room to work well.
+
+   Text is inserted at the cursor position the textarea had at the
+   moment "Transcribe" was clicked — captured once up front, not
+   re-read during playback, since playing audio doesn't move focus
+   but the person could still click elsewhere; inserting at a
+   stale/wrong position would be worse than a clearly fixed one.
+*/
+async function transcribeRecording(recording, audioEl, button) {
+
+    if (!isSpeechSupported()) {
+        setVoiceStatus("Live transcription isn't supported in this browser.");
+        return;
+    }
+
+    if (isRecording) {
+        setVoiceStatus("Stop the current recording before transcribing another clip.");
+        return;
+    }
+
+    const editor = document.getElementById("editor");
+    const insertionPoint = editor.selectionStart ?? editor.value.length;
+    const lang = document.getElementById("voiceLang").value;
+
+    let micStream;
+
+    try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (error) {
+        console.error(error);
+        setVoiceStatus("Microphone permission is needed to transcribe.");
+        return;
+    }
+
+    // The mic stream itself isn't fed anywhere here -- Speech
+    // Recognition listens through the OS/browser's own microphone
+    // input, not through this stream directly -- but requesting it
+    // first is what reliably triggers the permission prompt before
+    // recognition starts, rather than surprising the person mid-play.
+    micStream.getTracks().forEach(track => track.stop());
+
+    const SpeechRecognitionImpl =
+        window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    const recognizer = new SpeechRecognitionImpl();
+    recognizer.lang = lang;
+    recognizer.continuous = true;
+    recognizer.interimResults = false;
+
+    let transcribedText = "";
+    let insertedLength = 0;
+
+    function insertAtPoint(text) {
+
+        const current = editor.value;
+        const pos = insertionPoint + insertedLength;
+
+        editor.value =
+            current.slice(0, pos) + text + current.slice(pos);
+
+        insertedLength += text.length;
+
+        editor.setSelectionRange(pos + text.length, pos + text.length);
+
+        updateCounts();
+    }
+
+    recognizer.onresult = event => {
+
+        let finalText = "";
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            if (event.results[i].isFinal) {
+                finalText += event.results[i][0].transcript;
+            }
+        }
+
+        if (finalText.trim()) {
+            const toInsert = (transcribedText ? " " : "") + finalText.trim();
+            insertAtPoint(toInsert);
+            transcribedText += toInsert;
+        }
+    };
+
+    recognizer.onerror = event => {
+        if (event.error === "no-speech") return;
+        console.error("Transcription error:", event.error);
+    };
+
+    let recognitionActive = true;
+
+    recognizer.onend = () => {
+        // Mirrors startVoiceRecording's auto-restart: Chrome can end
+        // recognition on its own mid-playback (e.g. during a silent
+        // gap), and without restarting it, the rest of the recording
+        // would go untranscribed.
+        if (recognitionActive) {
+            try { recognizer.start(); } catch (e) {}
+        }
+    };
+
+    button.textContent = "⏹️ Listening…";
+    button.classList.add("transcribing");
+    button.disabled = false; // stays clickable, to allow cancelling
+    button.onclick = () => stopTranscription();
+
+    setVoiceStatus("Playing recording and transcribing…");
+
+    async function stopTranscription(silent) {
+
+        recognitionActive = false;
+        activeTranscriptionStopper = null;
+
+        audioEl.pause();
+        audioEl.currentTime = 0;
+        audioEl.onended = null;
+
+        await new Promise(resolve => {
+
+            let settled = false;
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                resolve();
+            };
+
+            recognizer.onend = finish;
+            recognizer.onerror = finish;
+            setTimeout(finish, 1500);
+
+            try { recognizer.stop(); } catch (e) { finish(); }
+        });
+
+        button.textContent = "📝 Transcribe";
+        button.classList.remove("transcribing");
+        button.disabled = !isSpeechSupported();
+        button.onclick = () => transcribeRecording(recording, audioEl, button);
+
+        // "silent" is set when a section switch cancels this
+        // transcription out from under the person; the ordinary
+        // completion status would be misleading at that point since
+        // they've already navigated away from what was transcribed.
+        if (!silent) {
+            setVoiceStatus(
+                transcribedText
+                    ? "Transcription added at the cursor."
+                    : "No speech recognized in that recording."
+            );
+        }
+
+        autosave();
+    }
+
+    activeTranscriptionStopper = stopTranscription;
+
+    audioEl.onended = stopTranscription;
+
+    try {
+        recognizer.start();
+        await audioEl.play();
+    } catch (error) {
+        console.error(error);
+        setVoiceStatus("Could not play the recording for transcription.");
+        await stopTranscription();
+    }
+}
+
+
 
 
 function renderAudioRecordings(recordings) {
@@ -2643,6 +2911,14 @@ function renderAudioRecordings(recordings) {
         badge.className = "audio-sync-badge " + (rec.syncedAt ? "synced" : "pending");
         badge.textContent = rec.syncedAt ? "Backed up" : "Not backed up yet";
         item.appendChild(badge);
+
+        const transcribeBtn = document.createElement("button");
+        transcribeBtn.className = "transcribe-audio-btn";
+        transcribeBtn.textContent = "📝 Transcribe";
+        transcribeBtn.title = "Play this recording and type what's heard at the cursor";
+        transcribeBtn.disabled = !isSpeechSupported();
+        transcribeBtn.onclick = () => transcribeRecording(rec, audioEl, transcribeBtn);
+        item.appendChild(transcribeBtn);
 
         const removeBtn = document.createElement("button");
         removeBtn.className = "remove-audio-btn";
@@ -2958,6 +3234,28 @@ async function selectNode(node) {
         return selectCalendarNode(node);
     }
 
+    /*
+       A transcription in progress inserts text into the CURRENTLY
+       open section as it plays. If the person switches sections
+       mid-transcription, that has to be stopped and its autosave
+       completed against the OLD selectedId first — before the line
+       below changes selectedId — or the transcribed text would
+       either be lost or (worse) saved into the wrong section.
+    */
+    if (activeTranscriptionStopper) {
+        await activeTranscriptionStopper(true);
+    }
+
+    // Switching sections while recording would, without this,
+    // leave the recording running with the OLD section's editor
+    // reference — recordingSectionId (captured when recording
+    // started) already protects which section the audio saves to,
+    // but stopping here too avoids a stray in-progress recording UI
+    // hanging around after the person has moved on.
+    if (isRecording) {
+        await stopVoiceRecording();
+    }
+
     selectedId = node.id;
 
     updateSelectedVisual();
@@ -2988,12 +3286,6 @@ async function selectNode(node) {
 
     editor.value = "";
     dateInput.value = "";
-
-    // Switching sections while recording would attach the audio to
-    // the wrong section, so stop any in-progress recording first.
-    if (isRecording) {
-        stopVoiceRecording();
-    }
 
     document.getElementById("voiceBtn").disabled = !isSpeechSupported();
 
