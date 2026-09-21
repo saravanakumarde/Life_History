@@ -177,6 +177,19 @@
     .node-title {
         font-size: 13px;
         line-height: 1.25;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        min-width: 8px;
+        border-radius: 50%;
+        margin-left: 4px;
     }
 
     .tree-children {
@@ -225,6 +238,29 @@
         font-weight: 600;
     }
 
+    #addPastNoteRow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 22px;
+        background: #f2f8f2;
+        border-bottom: 1px solid #cfe8cf;
+        font-size: 12px;
+        color: #2c6e2c;
+    }
+
+    #addPastNoteRow label {
+        font-weight: 600;
+    }
+
+    #pastNoteDateInput {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 4px 8px;
+        font-size: 12px;
+        font-family: inherit;
+    }
+
     #entryDate {
         border: 1px solid var(--border);
         border-radius: 6px;
@@ -236,6 +272,21 @@
     }
 
     #entryDate:disabled {
+        background: #f2f3f5;
+        color: var(--muted);
+    }
+
+    #entryStatus {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 4px 8px;
+        font-size: 12px;
+        font-family: inherit;
+        color: var(--text);
+        background: white;
+    }
+
+    #entryStatus:disabled {
         background: #f2f3f5;
         color: var(--muted);
     }
@@ -351,6 +402,37 @@
     #editorTitle {
         margin: 0;
         font-size: 21px;
+    }
+
+    #dailyNoteRenameRow {
+        display: flex;
+        align-items: center;
+        margin-top: 4px;
+        font-size: 13px;
+        color: var(--muted);
+    }
+
+    .daily-note-date-prefix {
+        font-family: monospace;
+        font-weight: 600;
+        color: var(--text);
+        background: #f2f3f5;
+        padding: 2px 6px;
+        border-radius: 5px;
+    }
+
+    .daily-note-underscore {
+        margin: 0 2px;
+        color: var(--muted);
+    }
+
+    #dailyNoteSuffixInput {
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        padding: 3px 7px;
+        font-size: 13px;
+        font-family: inherit;
+        min-width: 150px;
     }
 
     #saveStatus {
@@ -1006,16 +1088,32 @@
         <div>
             <div id="breadcrumb">Select a section from the left</div>
             <h2 id="editorTitle">My Life History</h2>
+            <div id="dailyNoteRenameRow" style="display:none;">
+                <span id="dailyNoteDatePrefix" class="daily-note-date-prefix"></span><span class="daily-note-underscore">_</span><input
+                    type="text"
+                    id="dailyNoteSuffixInput"
+                    maxlength="80"
+                    onchange="handleDailyNoteRename(this.value)"
+                >
+            </div>
         </div>
 
         <div id="saveStatus">Ready</div>
     </header>
 
     <div id="dateRow">
+        <label for="entryStatus">Status</label>
+        <select id="entryStatus" disabled onchange="handleStatusChange(this.value)"></select>
         <label for="entryDate">Date</label>
         <input type="date" id="entryDate" disabled>
         <span id="dateHint" class="date-hint"></span>
         <button id="clearDateBtn" onclick="clearEntryDate()" style="display:none;">Clear date</button>
+    </div>
+
+    <div id="addPastNoteRow" style="display:none;">
+        <label for="pastNoteDateInput">Add a note for a past date:</label>
+        <input type="date" id="pastNoteDateInput">
+        <button onclick="handleAddPastNote()">Add</button>
     </div>
 
     <div id="savedEventsRow" style="display:none;"></div>
@@ -2100,11 +2198,43 @@ function saveEntry(id, text, options = {}) {
                     ? options.events
                     : (existing?.events ?? []);
 
+            /*
+               status is one of STATUS_VALUES (see the tree-rendering
+               section) or null, meaning "no explicit status set yet."
+               When null, the UI infers a sensible default at DISPLAY
+               time (Not Started for empty text, WIP for non-empty) —
+               that inference is never written back into storage here,
+               so it can never silently overwrite a status the person
+               deliberately chose. Same carry-forward rule as the
+               other optional fields: a plain text-only autosave must
+               not touch it.
+            */
+            const status =
+                options.hasOwnProperty("status")
+                    ? options.status
+                    : (existing?.status ?? null);
+
+            /*
+               title is an optional custom display name for a node,
+               used by Everyday Notes for the editable part of a
+               daily note's name (e.g. "Note" in "20260921_Note").
+               Ordinary LIFE_TREE sections don't use this — their
+               titles are fixed in the tree structure — so it's null
+               for every entry except daily notes. Same carry-forward
+               rule as the other optional fields.
+            */
+            const title =
+                options.hasOwnProperty("title")
+                    ? options.title
+                    : (existing?.title ?? null);
+
             store.put({
                 id: id,
                 text: text,
                 eventDate,
                 events,
+                status,
+                title,
                 updatedAt:
                     options.updatedAt ||
                     new Date().toISOString(),
@@ -2131,6 +2261,14 @@ async function saveEntryDate(id, eventDate) {
     const current = await loadEntryFull(id);
 
     return saveEntry(id, current?.text || "", { eventDate });
+}
+
+
+async function saveEntryStatus(id, status) {
+
+    const current = await loadEntryFull(id);
+
+    return saveEntry(id, current?.text || "", { status });
 }
 
 
@@ -3107,6 +3245,473 @@ const CALENDAR_TREE_NODE = {
 
 
 /* =========================================================
+   PART XIV — EVERYDAY NOTES
+   =========================================================
+
+   Unlike every other section, Everyday Notes' children are NOT
+   fixed text from LIFE_TREE — they're generated at runtime, one
+   per calendar day, newest first. Each daily note is still a real,
+   ordinary entry in STORE (same saveEntry/autosave/status/dates/
+   sync machinery as any other section) — only the ID scheme and
+   how the list of children gets built are special.
+
+   ID scheme: "daily-YYYYMMDD", e.g. "daily-20260921". The date is
+   embedded in the id itself (not just the title), so a note's date
+   is never ambiguous even if the person renames the free-text part
+   of the title, and so the parent's children can be sorted purely
+   from the ids without re-parsing every title.
+
+   Title scheme: "YYYYMMDD_EditableName" — the YYYYMMDD prefix is
+   rendered but not editable (see the editor's title-editing UI);
+   only the part after the underscore can be renamed.
+*/
+
+const EVERYDAY_NOTES_PARENT_ID = "everyday-notes";
+const DAILY_NOTE_ID_PREFIX = "daily-";
+const DEFAULT_DAILY_NOTE_SUFFIX = "Note";
+
+
+function todayAsYYYYMMDD() {
+    return dateToYYYYMMDD(new Date());
+}
+
+
+function dateToYYYYMMDD(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}${m}${d}`;
+}
+
+
+function dailyNoteId(yyyymmdd) {
+    return DAILY_NOTE_ID_PREFIX + yyyymmdd;
+}
+
+
+function isDailyNoteId(id) {
+    return typeof id === "string" && id.startsWith(DAILY_NOTE_ID_PREFIX);
+}
+
+
+function dateFromDailyNoteId(id) {
+    return id.slice(DAILY_NOTE_ID_PREFIX.length); // "YYYYMMDD"
+}
+
+
+function formatYYYYMMDDForDisplay(yyyymmdd) {
+
+    const y = yyyymmdd.slice(0, 4);
+    const m = yyyymmdd.slice(4, 6);
+    const d = yyyymmdd.slice(6, 8);
+
+    return new Date(Number(y), Number(m) - 1, Number(d))
+        .toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+}
+
+
+/*
+   The Everyday Notes parent IS a permanent member of TREE (so it
+   always appears in its natural Part XIV position, unlike the
+   Calendar pseudo-node) — only its .children array is rebuilt
+   dynamically, in place, whenever notes are added or renamed. That
+   in-place mutation is why renderTree() picking it up again just
+   works without any special-casing in the renderer itself.
+*/
+const EVERYDAY_NOTES_NODE = {
+    id: EVERYDAY_NOTES_PARENT_ID,
+    title: "Part XIV — Everyday Notes",
+    prompt: "A running, dated journal. A new note appears automatically for each day; rename the part after the date to label it, or leave it as \"Note.\"",
+    parentId: null,
+    path: ["Part XIV — Everyday Notes"],
+    children: [] // populated by refreshEverydayNotesChildren()
+};
+
+TREE.push(EVERYDAY_NOTES_NODE);
+
+
+/*
+   Scans STORE for every existing daily note (ids starting with
+   "daily-"), finds the most recent one, and creates an EMPTY entry
+   for every missing calendar day between that date and today
+   (inclusive of today) — so a 3-day gap since last opening the app
+   becomes 3 new blank notes, silently, the next time it loads.
+
+   If there are no daily notes at all yet (first time this feature
+   is used), only today's note is created — there's no "last known
+   day" to backfill from, and creating notes retroactively forever
+   into the past would make no sense.
+
+   Returns nothing; callers should follow this with
+   refreshEverydayNotesChildren() to rebuild the visible list.
+*/
+async function ensureTodaysDailyNote() {
+
+    const allEntries = await loadAllEntries();
+
+    const existingDates = allEntries
+        .map(r => r.id)
+        .filter(isDailyNoteId)
+        .map(dateFromDailyNoteId)
+        .sort(); // "YYYYMMDD" strings sort correctly lexically
+
+    const todayStr = todayAsYYYYMMDD();
+
+    if (!existingDates.length) {
+        await createDailyNoteIfMissing(todayStr);
+        return;
+    }
+
+    const mostRecent = existingDates[existingDates.length - 1];
+
+    if (mostRecent >= todayStr) {
+        // Most recent existing note is today or (clock oddities
+        // aside) already covers today; nothing to backfill.
+        return;
+    }
+
+    // Walk forward day by day from the most recent existing note to
+    // today, creating any that don't already exist. Using an actual
+    // Date object for the iteration (rather than string arithmetic)
+    // so month/year boundaries are handled correctly for free.
+    const mostRecentDate = new Date(
+        Number(mostRecent.slice(0, 4)),
+        Number(mostRecent.slice(4, 6)) - 1,
+        Number(mostRecent.slice(6, 8))
+    );
+
+    let cursor = new Date(mostRecentDate);
+    cursor.setDate(cursor.getDate() + 1);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    while (dateToYYYYMMDD(cursor) <= todayAsYYYYMMDD()) {
+
+        await createDailyNoteIfMissing(dateToYYYYMMDD(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+
+        // Safety valve: never loop more than a few years' worth of
+        // days even if something is wrong with a stored date, so a
+        // corrupted record can't hang the app in an endless backfill.
+        if (cursor.getFullYear() - mostRecentDate.getFullYear() > 5) break;
+    }
+}
+
+
+/*
+   Creates a blank daily note for the given YYYYMMDD if one doesn't
+   already exist. Strictly one note per calendar date: this is the
+   single place that decision is enforced, used by both the
+   automatic midnight/backfill path and the manual "add a note for
+   a past date" action, so the rule can't drift between the two.
+*/
+async function createDailyNoteIfMissing(yyyymmdd) {
+
+    const id = dailyNoteId(yyyymmdd);
+    const existing = await loadEntryFull(id);
+
+    if (existing) return existing;
+
+    await saveEntry(id, "", { setRev: 1 });
+
+    return loadEntryFull(id);
+}
+
+
+/*
+   Rebuilds EVERYDAY_NOTES_NODE.children from whatever daily notes
+   actually exist in STORE right now, newest date first. Mutating
+   the array in place (rather than replacing the node object) is
+   what lets renderTree() just work without any special-casing —
+   it already reads node.children fresh on every render.
+*/
+async function refreshEverydayNotesChildren() {
+
+    const allEntries = await loadAllEntries();
+
+    const dailyEntries = allEntries
+        .filter(r => isDailyNoteId(r.id))
+        .sort((a, b) => b.id.localeCompare(a.id)); // newest date first
+
+    EVERYDAY_NOTES_NODE.children = dailyEntries.map(entry => {
+
+        const yyyymmdd = dateFromDailyNoteId(entry.id);
+        const suffix = extractEditableSuffix(entry.title) ?? DEFAULT_DAILY_NOTE_SUFFIX;
+
+        return {
+            id: entry.id,
+            title: `${yyyymmdd}_${suffix}`,
+            datePrefix: yyyymmdd,
+            editableSuffix: suffix,
+            parentId: EVERYDAY_NOTES_PARENT_ID,
+            path: [EVERYDAY_NOTES_NODE.title, `${yyyymmdd}_${suffix}`],
+            children: []
+        };
+    });
+}
+
+
+/*
+   A daily note's editable name is stored as a dedicated "title"
+   field on its own entry record (separate from the body text),
+   defaulting to DEFAULT_DAILY_NOTE_SUFFIX when not yet set. Kept
+   as its own record field (like eventDate or status) rather than
+   parsed out of anything else, so renaming never has to touch or
+   risk corrupting the note's actual written content.
+*/
+function extractEditableSuffix(storedTitle) {
+    return storedTitle || null;
+}
+
+
+/*
+   Lets the person manually create a note for a specific past date
+   (e.g. backfilling further back than the automatic gap-fill
+   reached, or a date they want to retroactively add). Reuses
+   createDailyNoteIfMissing so the "strictly one note per day" rule
+   is enforced the same way as the automatic path — if a note for
+   that date already exists, this opens it rather than duplicating.
+*/
+async function addManualDailyNote(yyyymmdd) {
+
+    await createDailyNoteIfMissing(yyyymmdd);
+    await refreshEverydayNotesChildren();
+
+    expanded.add(EVERYDAY_NOTES_PARENT_ID);
+    renderTree();
+
+    const node = EVERYDAY_NOTES_NODE.children.find(
+        c => c.id === dailyNoteId(yyyymmdd)
+    );
+
+    if (node) selectNode(node);
+}
+
+
+/*
+   Renames the editable part of a daily note's title (the date
+   prefix itself is never editable — there is no UI path that can
+   change it, since the date is what makes the note's identity and
+   its place in Calendar/backfill logic unambiguous). Trims to the
+   default label if left blank, rather than allowing an empty,
+   confusing "YYYYMMDD_" title.
+*/
+async function handleDailyNoteRename(newSuffix) {
+
+    if (!selectedId || !isDailyNoteId(selectedId)) return;
+
+    const trimmed = newSuffix.trim();
+    const finalSuffix = trimmed || DEFAULT_DAILY_NOTE_SUFFIX;
+
+    try {
+
+        const current = await loadEntryFull(selectedId);
+        await saveEntry(selectedId, current?.text || "", { title: finalSuffix });
+
+        await refreshEverydayNotesChildren();
+        renderTree();
+
+        const yyyymmdd = dateFromDailyNoteId(selectedId);
+
+        document.getElementById("editorTitle").textContent =
+            `${yyyymmdd}_${finalSuffix}`;
+        document.getElementById("dailyNoteSuffixInput").value = finalSuffix;
+
+        const updatedNode = EVERYDAY_NOTES_NODE.children.find(c => c.id === selectedId);
+        if (updatedNode) {
+            document.getElementById("breadcrumb").textContent =
+                updatedNode.path.join("  ›  ");
+        }
+
+    } catch (error) {
+
+        console.error(error);
+        setSaveStatus("Could not rename");
+    }
+}
+
+
+/*
+   Reads the date chosen in the "Add a note for a past date" input
+   and creates (or opens, if one already exists) that day's note.
+   Restricted to today or earlier — a "future" daily note doesn't
+   match what this feature is for, and would sit oddly in a
+   newest-first list that's otherwise strictly retrospective.
+*/
+async function handleAddPastNote() {
+
+    const input = document.getElementById("pastNoteDateInput");
+    const value = input.value; // "YYYY-MM-DD" from <input type="date">
+
+    if (!value) {
+        setSaveStatus("Choose a date first");
+        return;
+    }
+
+    const yyyymmdd = value.replace(/-/g, "");
+
+    if (yyyymmdd > todayAsYYYYMMDD()) {
+        setSaveStatus("Pick today or an earlier date");
+        return;
+    }
+
+    await addManualDailyNote(yyyymmdd);
+
+    input.value = "";
+}
+
+
+/* =========================================================
+   SECTION STATUS
+   =========================================================
+
+   Each section can carry an explicit status: Not Started, WIP,
+   Draft, In Review, or Final. It's stored on the same entry record
+   as the text (see saveEntry's "status" field), so it rides along
+   automatically with sync, encryption, and export/import — no
+   separate storage or syncing logic needed for it.
+
+   When no status has been explicitly set (status is null), the UI
+   INFERS one for display only: "Not Started" for a section with no
+   text, "WIP" for a section with some text. That inference is
+   never written back to storage, so it can never silently override
+   a status the person deliberately chose — only actually picking a
+   status from the dropdown writes anything.
+
+   Rendering the tree's 479 nodes needs to look up each one's status
+   synchronously (renderTree/renderNode aren't async, and making
+   them async to hit IndexedDB per node would be slow and janky for
+   a tree this size), so a small in-memory cache
+   (id -> {status, hasText}) is loaded once at startup and kept in
+   sync incrementally whenever a status or a section's text changes.
+*/
+
+const STATUS_VALUES = ["Not Started", "WIP", "Draft", "In Review", "Final"];
+
+const STATUS_COLORS = {
+    "Not Started": "#c7cbd1",
+    "WIP": "#e8a33d",
+    "Draft": "#4a90d9",
+    "In Review": "#9b59b6",
+    "Final": "#2fa84f"
+};
+
+let statusCache = new Map(); // id -> { status: string|null, hasText: boolean }
+
+
+async function loadStatusCache() {
+
+    const records = await loadAllEntries();
+
+    statusCache = new Map(
+        records.map(r => [
+            r.id,
+            { status: r.status ?? null, hasText: !!(r.text && r.text.trim()) }
+        ])
+    );
+}
+
+
+/*
+   The status actually shown for a node: its explicit status if one
+   was set, otherwise the inferred default based on whether it has
+   text. Nodes with no cache entry yet (never saved at all) count
+   as having no text.
+*/
+function getDisplayStatus(nodeId) {
+
+    const cached = statusCache.get(nodeId);
+
+    if (cached?.status) return cached.status;
+
+    return cached?.hasText ? "WIP" : "Not Started";
+}
+
+
+/*
+   Keeps the in-memory cache correct immediately after a save, so
+   the tree's dots update right away rather than only after a full
+   reload. Called from saveEntryStatus and from autosave.
+*/
+function updateStatusCacheEntry(id, status, hasText) {
+
+    const existing = statusCache.get(id) || {};
+
+    statusCache.set(id, {
+        status: status !== undefined ? status : (existing.status ?? null),
+        hasText: hasText !== undefined ? hasText : (existing.hasText ?? false)
+    });
+}
+
+
+/*
+   Fills the status <select> with STATUS_VALUES plus a leading
+   "(auto)" option representing "no explicit status set" — choosing
+   it clears any manually-set status and goes back to the inferred
+   default, rather than there being no way to undo a manual choice.
+*/
+function populateStatusOptions() {
+
+    const select = document.getElementById("entryStatus");
+    select.innerHTML = "";
+
+    const autoOption = document.createElement("option");
+    autoOption.value = "";
+    autoOption.textContent = "(auto)";
+    select.appendChild(autoOption);
+
+    STATUS_VALUES.forEach(value => {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = value;
+        select.appendChild(opt);
+    });
+}
+
+
+/*
+   Sets the dropdown to reflect a section's actual stored status
+   (blank/"(auto)" if none was explicitly set) rather than the
+   inferred display status — the dropdown should show what's
+   actually stored, so picking "(auto)" again is a meaningful,
+   visible no-op rather than looking like nothing happened.
+*/
+function setStatusSelectValue(explicitStatus, hasText) {
+
+    const select = document.getElementById("entryStatus");
+    select.value = explicitStatus || "";
+}
+
+
+async function handleStatusChange(value) {
+
+    if (!selectedId) return;
+
+    const status = value || null;
+
+    try {
+
+        await saveEntryStatus(selectedId, status);
+
+        const current = await loadEntryFull(selectedId);
+        updateStatusCacheEntry(
+            selectedId,
+            status,
+            !!(current?.text && current.text.trim())
+        );
+
+        renderTree();
+
+    } catch (error) {
+
+        console.error(error);
+        setDateHint("Could not save status");
+    }
+}
+
+
+/* =========================================================
    TREE RENDERING
    ========================================================= */
 
@@ -3178,6 +3783,16 @@ function renderNode(node) {
     row.appendChild(toggle);
     row.appendChild(icon);
     row.appendChild(title);
+
+    if (node.id !== CALENDAR_NODE_ID) {
+
+        const statusDot = document.createElement("span");
+        statusDot.className = "status-dot";
+        const displayStatus = getDisplayStatus(node.id);
+        statusDot.style.backgroundColor = STATUS_COLORS[displayStatus];
+        statusDot.title = displayStatus;
+        row.appendChild(statusDot);
+    }
 
     row.onclick = () => selectNode(node);
 
@@ -3268,6 +3883,26 @@ async function selectNode(node) {
     document.getElementById("breadcrumb")
         .textContent = node.path.join("  ›  ");
 
+    const renameRow = document.getElementById("dailyNoteRenameRow");
+    const addPastNoteRow = document.getElementById("addPastNoteRow");
+
+    if (isDailyNoteId(node.id)) {
+
+        renameRow.style.display = "flex";
+        document.getElementById("dailyNoteDatePrefix").textContent =
+            dateFromDailyNoteId(node.id);
+        document.getElementById("dailyNoteSuffixInput").value =
+            node.editableSuffix || DEFAULT_DAILY_NOTE_SUFFIX;
+
+    } else {
+        renameRow.style.display = "none";
+    }
+
+    addPastNoteRow.style.display =
+        (node.id === EVERYDAY_NOTES_PARENT_ID || isDailyNoteId(node.id))
+            ? "flex"
+            : "none";
+
     const prompt =
         node.prompt ||
         "Write whatever you remember. Do not worry about grammar or chronology. Capture facts, memories, people, places, feelings and details.";
@@ -3281,8 +3916,12 @@ async function selectNode(node) {
     const dateInput =
         document.getElementById("entryDate");
 
+    const statusSelect =
+        document.getElementById("entryStatus");
+
     editor.disabled = false;
     dateInput.disabled = false;
+    statusSelect.disabled = false;
 
     editor.value = "";
     dateInput.value = "";
@@ -3312,6 +3951,7 @@ async function selectNode(node) {
 
             editor.value = text;
             dateInput.value = toDateInputValue(record?.eventDate);
+            setStatusSelectValue(record?.status, !!text.trim());
 
             updateCounts();
             updateClearDateButton();
@@ -4148,12 +4788,46 @@ async function autosave() {
             })
         );
 
+        // Only the "Not Started" <-> "WIP" inference depends on
+        // hasText, and only when no explicit status is set — so
+        // this only visibly changes the dot the first time a blank
+        // section gets its first character, or the last character
+        // is deleted back out. Patching just this one row avoids
+        // re-rendering the whole 479-node tree on every keystroke.
+        const cached = statusCache.get(selectedId);
+        const hasText = !!text.trim();
+
+        if (!cached || cached.hasText !== hasText) {
+            updateStatusCacheEntry(selectedId, undefined, hasText);
+            updateNodeStatusDot(selectedId);
+        }
+
     } catch (error) {
 
         console.error(error);
 
         setSaveStatus("Save failed");
     }
+}
+
+
+/*
+   Updates a single tree row's status dot in place, without
+   re-rendering the whole tree — used after autosave, where a full
+   renderTree() on every keystroke would be wasteful and could
+   visibly flicker or reset scroll position.
+*/
+function updateNodeStatusDot(nodeId) {
+
+    const row = document.querySelector(
+        `.tree-row[data-id="${nodeId}"] .status-dot`
+    );
+
+    if (!row) return;
+
+    const displayStatus = getDisplayStatus(nodeId);
+    row.style.backgroundColor = STATUS_COLORS[displayStatus];
+    row.title = displayStatus;
 }
 
 
@@ -4416,9 +5090,25 @@ async function importData(event) {
 
             await saveEntry(
                 entry.id,
-                entry.text || ""
+                entry.text || "",
+                {
+                    eventDate: entry.eventDate ?? null,
+                    events: entry.events ?? [],
+                    status: entry.status ?? null,
+                    title: entry.title ?? null,
+                    setRev: entry.rev,
+                    updatedAt: entry.updatedAt
+                }
             );
         }
+
+        // A fresh import can introduce daily notes (or change which
+        // ones exist) that weren't part of the tree a moment ago;
+        // rebuild Part XIV's list and the status dots so the sidebar
+        // reflects the imported data immediately.
+        await refreshEverydayNotesChildren();
+        await loadStatusCache();
+        renderTree();
 
         alert(
             "Import completed successfully."
@@ -5296,6 +5986,10 @@ const DriveSync = (() => {
 
             for (const entry of backup.entries) {
                 await saveEntry(entry.id, entry.text || "", {
+                    eventDate: entry.eventDate ?? null,
+                    events: entry.events ?? [],
+                    status: entry.status ?? null,
+                    title: entry.title ?? null,
                     setRev: entry.rev,
                     updatedAt: entry.updatedAt
                 });
@@ -5303,6 +5997,10 @@ const DriveSync = (() => {
 
             await setMeta("syncRev", backup.syncRev || 0);
             await setMeta("lastSyncedAt", new Date().toISOString());
+
+            await refreshEverydayNotesChildren();
+            await loadStatusCache();
+            renderTree();
 
             if (selectedId) {
                 const current = await loadEntry(selectedId);
@@ -5477,6 +6175,10 @@ const DriveSync = (() => {
 
         for (const entry of backup.entries) {
             await saveEntry(entry.id, entry.text || "", {
+                eventDate: entry.eventDate ?? null,
+                events: entry.events ?? [],
+                status: entry.status ?? null,
+                title: entry.title ?? null,
                 setRev: entry.rev,
                 updatedAt: entry.updatedAt
             });
@@ -5484,6 +6186,13 @@ const DriveSync = (() => {
 
         await setMeta("syncRev", backup.syncRev || 0);
         await setMeta("lastSyncedAt", new Date().toISOString());
+
+        // A pulled backup can introduce or change daily notes and
+        // statuses; refresh the in-memory caches and sidebar so
+        // Part XIV and the status dots reflect what was just pulled.
+        await refreshEverydayNotesChildren();
+        await loadStatusCache();
+        renderTree();
 
         if (selectedId) {
             const current = await loadEntry(selectedId);
@@ -5529,6 +6238,10 @@ const DriveSync = (() => {
 
         for (const entry of merged.values()) {
             await saveEntry(entry.id, entry.text || "", {
+                eventDate: entry.eventDate ?? null,
+                events: entry.events ?? [],
+                status: entry.status ?? null,
+                title: entry.title ?? null,
                 setRev: entry.rev,
                 updatedAt: entry.updatedAt
             });
@@ -5544,6 +6257,10 @@ const DriveSync = (() => {
         await uploadBackup(file?.id, finalBackup);
         await setMeta("syncRev", bumpedRev);
         await setMeta("lastSyncedAt", new Date().toISOString());
+
+        await refreshEverydayNotesChildren();
+        await loadStatusCache();
+        renderTree();
 
         if (selectedId) {
             const current = await loadEntry(selectedId);
@@ -5640,6 +6357,19 @@ async function init() {
     try {
 
         await openDatabase();
+
+        await loadStatusCache();
+        populateStatusOptions();
+
+        /*
+           Backfill any missing daily notes (including today's, on
+           every load) BEFORE the first render, so Part XIV shows
+           its correct up-to-date list from the very first paint
+           rather than rendering empty and then jumping a moment
+           later once the backfill finishes.
+        */
+        await ensureTodaysDailyNote();
+        await refreshEverydayNotesChildren();
 
         renderTree();
 
