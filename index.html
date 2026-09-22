@@ -223,7 +223,23 @@
         margin-bottom: 3px;
     }
 
-    #dateRow {
+    #breadcrumb.sr-only-breadcrumb {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+    }
+
+    #titleLine {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    #metaRow {
         display: flex;
         align-items: center;
         gap: 8px;
@@ -232,25 +248,20 @@
         border-bottom: 1px solid var(--border);
         font-size: 12px;
         color: var(--muted);
+        flex-wrap: wrap;
     }
 
-    #dateRow label {
+    #metaRow label {
         font-weight: 600;
     }
 
-    #addPastNoteRow {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 22px;
-        background: #f2f8f2;
-        border-bottom: 1px solid #cfe8cf;
-        font-size: 12px;
+    #addPastNoteLabel {
         color: #2c6e2c;
     }
 
-    #addPastNoteRow label {
-        font-weight: 600;
+    #metaRowDivider {
+        color: var(--border);
+        margin: 0 2px;
     }
 
     #pastNoteDateInput {
@@ -821,7 +832,7 @@
             min-height: 220px;
         }
 
-        #dateRow {
+        #metaRow {
             padding: 6px 14px;
             flex-wrap: wrap;
         }
@@ -1085,8 +1096,8 @@
 <main id="main">
 
     <header id="editorHeader">
-        <div>
-            <div id="breadcrumb">Select a section from the left</div>
+        <div id="titleLine">
+            <div id="breadcrumb" class="sr-only-breadcrumb">Select a section from the left</div>
             <h2 id="editorTitle">My Life History</h2>
             <div id="dailyNoteRenameRow" style="display:none;">
                 <span id="dailyNoteDatePrefix" class="daily-note-date-prefix"></span><span class="daily-note-underscore">_</span><input
@@ -1101,19 +1112,17 @@
         <div id="saveStatus">Ready</div>
     </header>
 
-    <div id="dateRow">
+    <div id="metaRow">
         <label for="entryStatus">Status</label>
         <select id="entryStatus" disabled onchange="handleStatusChange(this.value)"></select>
         <label for="entryDate">Date</label>
         <input type="date" id="entryDate" disabled>
         <span id="dateHint" class="date-hint"></span>
         <button id="clearDateBtn" onclick="clearEntryDate()" style="display:none;">Clear date</button>
-    </div>
-
-    <div id="addPastNoteRow" style="display:none;">
-        <label for="pastNoteDateInput">Add a note for a past date:</label>
-        <input type="date" id="pastNoteDateInput">
-        <button onclick="handleAddPastNote()">Add</button>
+        <span id="metaRowDivider" style="display:none;">·</span>
+        <label id="addPastNoteLabel" for="pastNoteDateInput" style="display:none;">Add note for past date:</label>
+        <input type="date" id="pastNoteDateInput" style="display:none;">
+        <button id="addPastNoteBtn" onclick="handleAddPastNote()" style="display:none;">Add</button>
     </div>
 
     <div id="savedEventsRow" style="display:none;"></div>
@@ -3884,7 +3893,6 @@ async function selectNode(node) {
         .textContent = node.path.join("  ›  ");
 
     const renameRow = document.getElementById("dailyNoteRenameRow");
-    const addPastNoteRow = document.getElementById("addPastNoteRow");
 
     if (isDailyNoteId(node.id)) {
 
@@ -3898,10 +3906,15 @@ async function selectNode(node) {
         renameRow.style.display = "none";
     }
 
-    addPastNoteRow.style.display =
-        (node.id === EVERYDAY_NOTES_PARENT_ID || isDailyNoteId(node.id))
-            ? "flex"
-            : "none";
+    const showAddPastNote =
+        node.id === EVERYDAY_NOTES_PARENT_ID || isDailyNoteId(node.id);
+
+    const addPastNoteDisplay = showAddPastNote ? "inline-flex" : "none";
+
+    document.getElementById("metaRowDivider").style.display = addPastNoteDisplay;
+    document.getElementById("addPastNoteLabel").style.display = addPastNoteDisplay;
+    document.getElementById("pastNoteDateInput").style.display = addPastNoteDisplay;
+    document.getElementById("addPastNoteBtn").style.display = addPastNoteDisplay;
 
     const prompt =
         node.prompt ||
@@ -4050,7 +4063,7 @@ let calendarCursor = new Date(); // which month is currently shown
 
 function showEditorUI() {
 
-    document.getElementById("dateRow").style.display = "flex";
+    document.getElementById("metaRow").style.display = "flex";
     document.getElementById("editorArea").style.display = "block";
     document.getElementById("calendarView").style.display = "none";
 }
@@ -4058,7 +4071,7 @@ function showEditorUI() {
 
 function showCalendarUI() {
 
-    document.getElementById("dateRow").style.display = "none";
+    document.getElementById("metaRow").style.display = "none";
     document.getElementById("editorArea").style.display = "none";
     document.getElementById("calendarView").style.display = "block";
 }
